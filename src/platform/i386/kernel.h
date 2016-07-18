@@ -5,6 +5,7 @@
 #include "shared/cos_types.h"
 #include "chal.h"
 #include "multiboot.h"
+#include "pci.h"
 
 #include "chal_asm_inc.h"
 #include <thd.h>
