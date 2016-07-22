@@ -1,8 +1,11 @@
 #ifndef PCI_H
 #define PCI_H
 
+#include "ivshmem.h"
+
 #define PCI_BUS_MAX        256
 #define PCI_DEVICE_MAX     32
+#define PCI_FUNC_MAX       7
 #define PCI_DEVICE_NUM     64
 #define PCI_CONFIG_ADDRESS 0xCF8
 #define PCI_CONFIG_DATA    0xCFC

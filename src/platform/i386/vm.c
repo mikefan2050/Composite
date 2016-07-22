@@ -90,6 +90,15 @@ kern_setup_image(void)
 		}
 	}
 
+	/* FIXME: Ugly hack to get the physical page with the PCI IVSHMEM mapped */
+	if (ivshmem_phy_addr) {
+        	u32_t page = round_to_pgd_page(ivshmem_phy_addr);
+		boot_comp_pgd[j] = page | PGTBL_PRESENT | PGTBL_WRITABLE | PGTBL_SUPER | PGTBL_GLOBAL;
+		printk("kern_setup_image ivshmem j %d old %x page %x\n", j, ivshmem_phy_addr, page);
+		ivshmem_set_page(j);
+		j++;
+	}
+
 	for ( ; j < PAGE_SIZE/sizeof(unsigned int) ; i += PGD_RANGE, j++) {
 		boot_comp_pgd[j] = boot_comp_pgd[i/PGD_RANGE] = 0;
 	}
