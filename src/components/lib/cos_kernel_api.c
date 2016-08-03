@@ -40,9 +40,9 @@ __compinfo_metacap(struct cos_compinfo *ci)
 { return ci->memsrc; }
 
 void
-cos_compinfo_init(struct cos_compinfo *ci, captblcap_t pgtbl_cap, pgtblcap_t captbl_cap,
-		  compcap_t comp_cap, vaddr_t heap_ptr, capid_t cap_frontier,
-		  struct cos_compinfo *ci_resources)
+cos_compinfo_init(struct cos_compinfo *ci, pgtblcap_t pgtbl_cap, captblcap_t captbl_cap,
+		  pgtblcap_t local_pgtbl_cap, compcap_t comp_cap, vaddr_t heap_ptr, 
+		  capid_t cap_frontier, struct cos_compinfo *ci_resources)
 {
 	assert(ci && ci_resources);
 	assert(cap_frontier % CAPMAX_ENTRY_SZ == 0);
@@ -50,11 +50,12 @@ cos_compinfo_init(struct cos_compinfo *ci, captblcap_t pgtbl_cap, pgtblcap_t cap
 	ci->memsrc = ci_resources;
 	assert(ci_resources->memsrc == ci_resources); /* prevent infinite data-structs */
 
-	ci->pgtbl_cap    = pgtbl_cap;
-	ci->captbl_cap   = captbl_cap;
-	ci->comp_cap     = comp_cap;
-	ci->vas_frontier = heap_ptr;
-	ci->cap_frontier = cap_frontier;
+	ci->pgtbl_cap       = pgtbl_cap;
+	ci->captbl_cap      = captbl_cap;
+	ci->local_pgtbl_cap = local_pgtbl_cap;
+	ci->comp_cap        = comp_cap;
+	ci->vas_frontier    = heap_ptr;
+	ci->cap_frontier    = cap_frontier;
 	/*
 	 * The first allocation should trigger PTE allocation, unless
 	 * it is in the middle of a PGD, in which case we assume one
@@ -109,7 +110,7 @@ __mem_bump_alloc(struct cos_compinfo *__ci, int km)
 		/* are we dealing with a kernel memory allocation? */
 		syscall_op_t op = km ? CAPTBL_OP_MEM_RETYPE2KERN : CAPTBL_OP_MEM_RETYPE2USER;
 
-		if (call_cap_op(ci->pgtbl_cap, op, ret, 0, 0, 0)) return 0;
+		if (call_cap_op(ci->local_pgtbl_cap, op, ret, 0, 0, 0)) return 0;
 	}
 
 	*ptr += PAGE_SIZE;
@@ -200,7 +201,7 @@ __capid_captbl_check_expand(struct cos_compinfo *ci)
 
 	printd("__capid_captbl_check_expand->pre-captblactivate (%d)\n", CAPTBL_OP_CAPTBLACTIVATE);
 	/* captbl internal node allocated with the resource provider's captbls */
-	if (call_cap_op(meta->captbl_cap, CAPTBL_OP_CAPTBLACTIVATE, captblcap, meta->pgtbl_cap, kmem, 1)) {
+	if (call_cap_op(meta->captbl_cap, CAPTBL_OP_CAPTBLACTIVATE, captblcap, meta->local_pgtbl_cap, kmem, 1)) {
 		assert(0); /* race condition? */
 		return -1;
 	}
@@ -298,7 +299,7 @@ __page_bump_valloc(struct cos_compinfo *ci)
 
 		/* PTE */
 		if (call_cap_op(meta->captbl_cap, CAPTBL_OP_PGTBLACTIVATE,
-				pte_cap, meta->pgtbl_cap, ptemem_cap, 1)) {
+				pte_cap, meta->local_pgtbl_cap, ptemem_cap, 1)) {
 			assert(0); /* race? */
 			return 0;
 		}
@@ -338,7 +339,7 @@ __page_bump_alloc(struct cos_compinfo *ci)
 	if (!umem) return 0;
 
 	/* Actually map in the memory. FIXME: cleanup! */
-	if (call_cap_op(meta->pgtbl_cap, CAPTBL_OP_MEMACTIVATE, umem,
+	if (call_cap_op(meta->local_pgtbl_cap, CAPTBL_OP_MEMACTIVATE, umem,
 			ci->pgtbl_cap, heap_vaddr, 0)) {
 		assert(0);
 		return 0;
@@ -386,7 +387,7 @@ __cos_thd_alloc(struct cos_compinfo *ci, compcap_t comp, int init_data)
 	if (__alloc_mem_cap(ci, CAP_THD, &kmem, &cap)) return 0;
 	assert((size_t)init_data < sizeof(u16_t)*8);
 	/* TODO: Add cap size checking */
-	if (call_cap_op(ci->captbl_cap, CAPTBL_OP_THDACTIVATE, (init_data << 16) | cap, ci->pgtbl_cap, kmem, comp)) BUG();
+	if (call_cap_op(ci->captbl_cap, CAPTBL_OP_THDACTIVATE, (init_data << 16) | cap, ci->local_pgtbl_cap, kmem, comp)) BUG();
 
 	return cap;
 }
@@ -459,7 +460,6 @@ cos_comp_alloc(struct cos_compinfo *ci, captblcap_t ctc, pgtblcap_t ptc, vaddr_t
 	return cap;
 }
 
-/* Allocate an entire new component and initialize ci with it's data */
 int
 cos_compinfo_alloc(struct cos_compinfo *ci, vaddr_t heap_ptr, vaddr_t entry,
 		   struct cos_compinfo *ci_resources)
@@ -477,7 +477,7 @@ cos_compinfo_alloc(struct cos_compinfo *ci, vaddr_t heap_ptr, vaddr_t entry,
 	compc = cos_comp_alloc(ci_resources, ctc, ptc, entry);
 	assert(compc);
 
-	cos_compinfo_init(ci, ptc, ctc, compc, heap_ptr, 0, ci_resources);
+	cos_compinfo_init(ci, ptc, ctc, ptc, compc, heap_ptr, 0, ci_resources);
 
 	return 0;
 }
@@ -511,7 +511,9 @@ cos_arcv_alloc(struct cos_compinfo *ci, thdcap_t thdcap, tcap_t tcapcap, compcap
 {
 	capid_t cap;
 
-	assert(ci && thdcap && compcap);
+	assert(ci && thdcap && tcapcap && compcap);
+
+	printd("arcv_alloc: tcap cap %d\n", (int)tcapcap);
 
 	cap = __capid_bump_alloc(ci, CAP_ARCV);
 	if (!cap) return 0;
@@ -563,11 +565,15 @@ cos_thd_switch(thdcap_t c)
 { return call_cap_op(c, 0, 0, 0, 0, 0); }
 
 int
+cos_switch(thdcap_t c, tcap_t tc, tcap_prio_t prio, tcap_res_t res, arcvcap_t rcv)
+{ (void)res; return call_cap_op(c, 0, tc << 16 | rcv, (prio << 32) >> 32, prio >> 32, res); }
+
+int
 cos_asnd(asndcap_t snd)
 { return call_cap_op(snd, 0, 0, 0, 0, 0); }
 
 int
-cos_rcv(arcvcap_t rcv, thdid_t *thdid, int *receiving, cycles_t *cycles)
+cos_sched_rcv(arcvcap_t rcv, thdid_t *thdid, int *receiving, cycles_t *cycles)
 {
 	unsigned long thd_state = 0;
 	unsigned long cyc = 0;
@@ -578,6 +584,20 @@ cos_rcv(arcvcap_t rcv, thdid_t *thdid, int *receiving, cycles_t *cycles)
 	*receiving = (int)(thd_state >> (sizeof(thd_state)*8-1));
 	*thdid = (thdid_t)(thd_state & ((1 << (sizeof(thdid_t)*8))-1));
 	*cycles = cyc;
+
+	return ret;
+}
+
+int
+cos_rcv(arcvcap_t rcv)
+{
+	thdid_t tid = 0;
+	int rcving;
+	cycles_t cyc;
+	int ret;
+
+	ret = cos_sched_rcv(rcv, &tid, &rcving, &cyc);
+	assert(tid == 0);
 
 	return ret;
 }
@@ -616,25 +636,25 @@ cos_introspect(struct cos_compinfo *ci, capid_t cap, unsigned long op)
 /***************** [Kernel Tcap Operations] *****************/
 
 tcap_t
-cos_tcap_split(struct cos_compinfo *ci, tcap_t src, int pool)
+cos_tcap_alloc(struct cos_compinfo *ci, tcap_prio_t prio)
 {
 	vaddr_t kmem;
 	capid_t cap;
-	/* top bit is if it is a pool or not */
-	u32_t s = (u32_t)(src) | ((u32_t)pool << ((sizeof(s)*8)-1));
+	int prio_hi = (u32_t)(prio >> 32);
+	int prio_lo = (u32_t)((prio << 32) >> 32);
 
-	printd("cos_tcap_split\n");
+	printd("cos_tcap_alloc\n");
 	assert (ci);
 
 	if (__alloc_mem_cap(ci, CAP_TCAP, &kmem, &cap)) return 0;
 	/* TODO: Add cap size checking */
-	if (call_cap_op(ci->captbl_cap, CAPTBL_OP_TCAP_ACTIVATE, cap, ci->pgtbl_cap, kmem, (u32_t)s)) BUG();
+	if (call_cap_op(ci->captbl_cap, CAPTBL_OP_TCAP_ACTIVATE, (cap << 16) | ci->local_pgtbl_cap, kmem, prio_hi, prio_lo)) BUG();
 
 	return cap;
 }
 
 int
-cos_tcap_transfer(tcap_t src, tcap_t dst, tcap_res_t res, tcap_prio_t prio)
+cos_tcap_transfer(arcvcap_t dst, tcap_t src, tcap_res_t res, tcap_prio_t prio)
 {
 	int prio_higher = (u32_t)(prio >> 32);
 	int prio_lower  = (u32_t)((prio << 32) >> 32);
@@ -643,13 +663,12 @@ cos_tcap_transfer(tcap_t src, tcap_t dst, tcap_res_t res, tcap_prio_t prio)
 }
 
 int
-cos_tcap_delegate(tcap_t src, arcvcap_t dst, tcap_res_t res, tcap_prio_t prio, tcap_deleg_flags_t flags)
+cos_tcap_delegate(asndcap_t dst, tcap_t src, tcap_res_t res, tcap_prio_t prio, tcap_deleg_flags_t flags)
 {
 	u32_t yield     = flags & TCAP_DELEG_YIELD;
 	/* top bit is if we are dispatching or not */
 	int prio_higher = (u32_t)(prio >> 32) | (yield << ((sizeof(yield)*8)-1));
 	int prio_lower  = (u32_t)((prio << 32) >> 32);
-	int ret = -EINVAL;
 
 	return call_cap_op(src, CAPTBL_OP_TCAP_DELEGATE, dst, res, prio_higher, prio_lower);
 }

@@ -32,10 +32,16 @@ typedef signed long long s64_t;
 #define LLONG_MAX 9223372036854775807LL
 
 typedef s64_t cycles_t;
-typedef cycles_t tcap_res_t;
+typedef unsigned long tcap_res_t;
 typedef u64_t tcap_prio_t;
 typedef u64_t tcap_uid_t;
 #define PRINT_CAP_TEMP (1 << 14)
+
+typedef enum {
+	TCAP_DELEG_TRANSFER = 1,
+	TCAP_DELEG_YIELD    = 1<<1,
+} tcap_deleg_flags_t;
+
 
 #define BOOT_LIVENESS_ID_BASE 2
 
@@ -104,6 +110,11 @@ typedef enum {
 	CAP_HW,			/* hardware (interrupt) */
 } cap_t;
 
+/* TODO: pervasive use of these macros */
+/* v \in struct cap_* *, type \in cap_t */
+#define CAP_TYPECHK(v, t) ((v) && (v)->h.type == (t))
+#define CAP_TYPECHK_CORE(v, type) (CAP_TYPECHK((v), (type)) && (v)->cpuid == get_cpuid())
+
 typedef enum {
 	HW_PERIODIC = 32,	/* periodic timer interrupt */
 	HW_KEYBOARD,		/* keyboard interrupt */
@@ -140,6 +151,14 @@ typedef enum {
 } hwid_t;
 
 typedef unsigned long capid_t;
+#define TCAP_PRIO_MAX (1ULL)
+#define TCAP_PRIO_MIN (~0ULL)
+#define TCAP_RES_GRAN_ORD  16
+#define TCAP_RES_PACK(r)   (round_up_to_pow2((r), 1 << TCAP_RES_GRAN_ORD))
+#define TCAP_RES_EXPAND(r) ((r) << TCAP_RES_GRAN_ORD)
+#define TCAP_RES_INF  (~0UL)
+#define TCAP_RES_IS_INF(r) (r == TCAP_RES_INF)
+typedef capid_t tcap_t;
 
 #define QUIESCENCE_CHECK(curr, past, quiescence_period)  (((curr) - (past)) > (quiescence_period))
 
@@ -207,6 +226,7 @@ static inline unsigned long captbl_idsize(cap_t c)
  * 16-17 = km pte
  * 18-19 = comp0 captbl,
  * 20-21 = comp0 pgtbl root,
+ * 22-23 = local memory pgtbl root
  * 24-27 = comp0 component,
  * 28~(20+2*NCPU) = per core alpha thd
  *
@@ -216,16 +236,17 @@ static inline unsigned long captbl_idsize(cap_t c)
  * 2GB-> = system physical memory
  */
 enum {
-	BOOT_CAPTBL_SRET       = 0,
-	BOOT_CAPTBL_SELF_CT    = 4,
-	BOOT_CAPTBL_SELF_PT    = 6,
-	BOOT_CAPTBL_SELF_COMP  = 8,
-	BOOT_CAPTBL_BOOTVM_PTE = 12,
-	BOOT_CAPTBL_PHYSM_PTE  = 14,
-	BOOT_CAPTBL_KM_PTE     = 16,
+	BOOT_CAPTBL_SRET          = 0,
+	BOOT_CAPTBL_SELF_CT       = 4,
+	BOOT_CAPTBL_SELF_PT       = 6,
+	BOOT_CAPTBL_SELF_COMP     = 8,
+	BOOT_CAPTBL_BOOTVM_PTE    = 12,
+	BOOT_CAPTBL_SELF_LOCAL_PT = 14,
+	BOOT_CAPTBL_PHYSM_PTE     = 16,
+	BOOT_CAPTBL_KM_PTE        = 18,
 
-	BOOT_CAPTBL_COMP0_CT           = 18,
-	BOOT_CAPTBL_COMP0_PT           = 20,
+	BOOT_CAPTBL_COMP0_CT           = 20,
+	BOOT_CAPTBL_COMP0_PT           = 22,
 	BOOT_CAPTBL_COMP0_COMP         = 24,
 	BOOT_CAPTBL_SELF_INITTHD_BASE  = 28,
 	BOOT_CAPTBL_SELF_INITTCAP_BASE = BOOT_CAPTBL_SELF_INITTHD_BASE + NUM_CPU_COS*CAP16B_IDSZ,
@@ -823,19 +844,6 @@ cos_mem_fence(void)
 #define COS_THD_INIT_REGION_SIZE (((NUM_CPU*16) > (1<<8)) ? (1<<8) : (NUM_CPU*16))
 // Static entries are after the dynamic allocated entries
 #define COS_STATIC_THD_ENTRY(i) ((i + COS_THD_INIT_REGION_SIZE + 1))
-
-#define TCAP_RES_GRAN_ORD  16
-#define TCAP_RES_PACK(r)   (round_up_to_pow2((r), 1 << TCAP_RES_GRAN_ORD))
-#define TCAP_RES_EXPAND(r) ((r) << TCAP_RES_GRAN_ORD)
-#define TCAP_RES_INF LLONG_MAX
-#define TCAP_RES_IS_INF(r) (r == TCAP_RES_INF)
-
-typedef capid_t tcap_t;
-
-typedef enum {
-	TCAP_DELEG_TRANSFER = 1,
-	TCAP_DELEG_YIELD    = 1<<1,
-} tcap_deleg_flags_t;
 
 #ifndef __KERNEL_PERCPU
 #define __KERNEL_PERCPU 0
