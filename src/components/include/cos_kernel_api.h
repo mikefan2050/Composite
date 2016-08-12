@@ -25,7 +25,7 @@ typedef capid_t hwcap_t;
 struct cos_meminfo {
 	vaddr_t untyped_ptr,      umem_ptr,      kmem_ptr;
 	vaddr_t untyped_frontier, umem_frontier, kmem_frontier;
-	capid_t pgtbl_cap;
+	pgtblcap_t pgtbl_cap;
 };
 
 /* Component captbl/pgtbl allocation information */

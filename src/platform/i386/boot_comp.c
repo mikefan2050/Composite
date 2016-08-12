@@ -25,6 +25,7 @@ boot_pgtbl_mappings_add(struct captbl *ct, capid_t pgdcap, capid_t ptecap, const
 	pgtbl_t pgtbl;
 
 	pgd_cap = (struct cap_pgtbl*)captbl_lkup(ct, pgdcap);
+	if (!pgd_cap || !CAP_TYPECHK(pgd_cap, CAP_PGTBL)) assert(0);
 	pgtbl = (pgtbl_t)pgd_cap->pgtbl;
 	nptes = boot_nptes(range);
 	ptes = mem_boot_alloc(nptes);
@@ -98,7 +99,7 @@ kern_boot_thd(struct captbl *ct, void *thd_mem, void *tcap_mem)
 	tc->budget.cycles = TCAP_RES_INF; /* father time's got all the time in the world */
 	tcap_setprio(tc, 0);              /* father time gets preempted by no one! */
 	assert(!ret);
-	thd_current_update(t, tcap_mem, t, cos_cpu_local_info());
+	thd_current_update(t, tcap_mem, t, 0, cos_cpu_local_info());
 
 	ret = arcv_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_SELF_INITRCV_BASE,
 			    BOOT_CAPTBL_SELF_COMP, BOOT_CAPTBL_SELF_INITTHD_BASE,
@@ -115,7 +116,7 @@ kern_boot_comp(void)
         struct captbl *ct;
         unsigned int i;
 	u8_t *boot_comp_captbl;
-	pgtbl_t pgtbl = (pgtbl_t)chal_va2pa(&boot_comp_pgd), local_pgd;
+	pgtbl_t pgtbl = (pgtbl_t)chal_va2pa(&boot_comp_pgd), untyped_pgd;
 	void *thd_mem, *tcap_mem;
 	u32_t hw_bitmap = 0xFFFFFFFF;
 
@@ -158,10 +159,10 @@ kern_boot_comp(void)
 	 * Need to account for the pages that will be allocated as
 	 * PTEs
 	 */
-	local_pgd = (pgtbl_t)chal_va2pa(mem_boot_alloc(1));
-	if (pgtbl_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_SELF_LOCAL_PT, local_pgd, 0)) assert(0);
+	untyped_pgd = (pgtbl_t)chal_va2pa(mem_boot_alloc(1));
+	if (pgtbl_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_SELF_UNTYPED_PT, untyped_pgd, 0)) assert(0);
 	nkmemptes = boot_nptes(mem_utmem_end() - mem_boot_end());
-	ret = boot_pgtbl_mappings_add(ct, BOOT_CAPTBL_SELF_LOCAL_PT, BOOT_CAPTBL_KM_PTE, "untyped memory", mem_boot_nalloc_end(nkmemptes),
+	ret = boot_pgtbl_mappings_add(ct, BOOT_CAPTBL_SELF_UNTYPED_PT, BOOT_CAPTBL_KM_PTE, "untyped memory", mem_boot_nalloc_end(nkmemptes),
 				      BOOT_MEM_KM_BASE, mem_utmem_end() - mem_boot_nalloc_end(nkmemptes), 0);
 	assert(ret == 0);
 	/* Shut off further bump allocations */

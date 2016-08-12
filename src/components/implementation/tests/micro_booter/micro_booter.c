@@ -50,7 +50,7 @@ thdcap_t termthd; 		/* switch to this to shutdown */
 /* For Div-by-zero test */
 int num = 1, den = 0;
 
-#define ITER 10
+#define ITER 10000
 #define TEST_NTHDS 5
 unsigned long tls_test[TEST_NTHDS];
 
@@ -215,11 +215,11 @@ async_thd_fn(void *thdcap)
 	int pending;
 
 	printc("Asynchronous event thread handler.\n<-- rcving...\n");
-	pending = cos_sched_rcv(rc, &tid, &rcving, &cycles);
-	printc("<-- pending %d, thdid %d, rcving %d, cycles %lld\n<-- rcving...\n", pending, tid, rcving, cycles);
-	pending = cos_sched_rcv(rc, &tid, &rcving, &cycles);
-	printc("<-- pending %d, thdid %d, rcving %d, cycles %lld\n<-- rcving...\n", pending, tid, rcving, cycles);
-	pending = cos_sched_rcv(rc, &tid, &rcving, &cycles);
+	pending = cos_rcv(rc);
+	printc("<-- pending %d\n<-- rcving...\n", pending);
+	pending = cos_rcv(rc);
+	printc("<-- pending %d\n<-- rcving...\n", pending);
+	pending = cos_rcv(rc);
 	printc("<-- Error: manually returning to snding thread.\n");
 	cos_thd_switch(tc);
 	printc("ERROR: in async thd *after* switching back to the snder.\n");
@@ -229,7 +229,7 @@ async_thd_fn(void *thdcap)
 static void
 async_thd_parent(void *thdcap)
 {
-	thdcap_t tc = (thdcap_t)thdcap;
+	thdcap_t  tc = (thdcap_t)thdcap;
 	arcvcap_t rc = rcp_global;
 	asndcap_t sc = scp_global;
 	int ret, pending;
@@ -254,9 +254,9 @@ async_thd_parent(void *thdcap)
 static void
 test_async_endpoints(void)
 {
-	thdcap_t  tcp, tcc;
+	thdcap_t  tcp,  tcc;
 	tcap_t    tccp, tccc;
-	arcvcap_t rcp, rcc;
+	arcvcap_t rcp,  rcc;
 	int ret;
 
 	printc("Creating threads, and async end-points.\n");
@@ -568,7 +568,7 @@ term_fn(void *d)
 void
 cos_init(void)
 {
-	cos_meminfo_init(&booter_info.local_mi, BOOT_MEM_KM_BASE, COS_MEM_KERN_PA_SZ, BOOT_CAPTBL_SELF_LOCAL_PT);
+	cos_meminfo_init(&booter_info.mi, BOOT_MEM_KM_BASE, COS_MEM_KERN_PA_SZ, BOOT_CAPTBL_SELF_UNTYPED_PT);
 	cos_compinfo_init(&booter_info, BOOT_CAPTBL_SELF_PT, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_SELF_COMP,
 			  (vaddr_t)cos_get_heap_ptr(), BOOT_CAPTBL_FREE, &booter_info);
 
