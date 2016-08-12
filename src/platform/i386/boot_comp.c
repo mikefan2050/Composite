@@ -158,11 +158,9 @@ kern_boot_comp(void)
 	 * Need to account for the pages that will be allocated as
 	 * PTEs
 	 */
-	local_pgd = (pgtbl_t)mem_boot_alloc(1);
-	local_pgd = (pgtbl_t)chal_va2pa(local_pgd);
-        if (pgtbl_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_SELF_LOCAL_PT, local_pgd, 0)) assert(0);
+	local_pgd = (pgtbl_t)chal_va2pa(mem_boot_alloc(1));
+	if (pgtbl_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_SELF_LOCAL_PT, local_pgd, 0)) assert(0);
 	nkmemptes = boot_nptes(mem_utmem_end() - mem_boot_end());
-	printk("xxxxxxxx bott %x\n", mem_boot_nalloc_end(nkmemptes));
 	ret = boot_pgtbl_mappings_add(ct, BOOT_CAPTBL_SELF_LOCAL_PT, BOOT_CAPTBL_KM_PTE, "untyped memory", mem_boot_nalloc_end(nkmemptes),
 				      BOOT_MEM_KM_BASE, mem_utmem_end() - mem_boot_nalloc_end(nkmemptes), 0);
 	assert(ret == 0);
