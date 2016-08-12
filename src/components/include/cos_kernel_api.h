@@ -40,7 +40,7 @@ struct cos_compinfo {
 	vaddr_t vas_frontier, vasrange_frontier;
 	/* the source of memory */
 	struct cos_compinfo *memsrc; /* might be self-referential */
-	struct cos_meminfo local_mi;	     /* only populated for the component with real memory */
+	struct cos_meminfo mi;	     /* only populated for the component with real memory */
 };
 
 void cos_compinfo_init(struct cos_compinfo *ci, pgtblcap_t pgtbl_cap, captblcap_t captbl_cap, compcap_t comp_cap, vaddr_t heap_ptr, capid_t cap_frontier, struct cos_compinfo *ci_resources);

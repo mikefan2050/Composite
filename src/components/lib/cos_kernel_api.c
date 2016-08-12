@@ -91,17 +91,17 @@ __mem_bump_alloc(struct cos_compinfo *__ci, int km)
 	assert(ci && ci == __compinfo_metacap(__ci));
 
 	if (km) {
-		ptr      = &ci->local_mi.kmem_ptr;
-		frontier = &ci->local_mi.kmem_frontier;
+		ptr      = &ci->mi.kmem_ptr;
+		frontier = &ci->mi.kmem_frontier;
 	} else {
-		ptr      = &ci->local_mi.umem_ptr;
-		frontier = &ci->local_mi.umem_frontier;
+		ptr      = &ci->mi.umem_ptr;
+		frontier = &ci->mi.umem_frontier;
 	}
 	if (*ptr == *frontier) {
 		/* TODO: expand frontier if introspection says there is more memory */
-		if (ci->local_mi.untyped_ptr == ci->local_mi.untyped_frontier) return 0;
-		ret                 = ci->local_mi.untyped_ptr;
-		ci->local_mi.untyped_ptr += RETYPE_MEM_SIZE; /* TODO: atomic */
+		if (ci->mi.untyped_ptr == ci->mi.untyped_frontier) return 0;
+		ret                 = ci->mi.untyped_ptr;
+		ci->mi.untyped_ptr += RETYPE_MEM_SIZE; /* TODO: atomic */
 		*ptr                = ret;
 		*frontier           = ret + RETYPE_MEM_SIZE;
 	}
