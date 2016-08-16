@@ -153,7 +153,7 @@ kmain(struct multiboot *mboot, u32_t mboot_magic, u32_t esp)
 
 	chal_init();
 	cap_init();
-	ltbl_init();
+	ltbl_init(__liveness_tbl);
 	retype_tbl_init();
 	comp_init();
 	thd_init();

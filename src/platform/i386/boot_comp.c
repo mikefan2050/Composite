@@ -68,9 +68,9 @@ boot_pgtbl_mappings_add(struct captbl *ct, capid_t pgdcap, capid_t ptecap, const
 		paddr_t pf  = chal_va2pa(p);
 		u32_t mapat = (u32_t)user_vaddr + i * PAGE_SIZE, flags = 0;
 
-                if (uvm  && pgtbl_mapping_add(pgtbl, mapat, pf, PGTBL_USER_DEF)) assert(0);
-                if (!uvm && pgtbl_cosframe_add(pgtbl, mapat, pf, PGTBL_COSFRAME)) assert(0);
-                assert((void*)p == pgtbl_lkup(pgtbl, user_vaddr+i*PAGE_SIZE, &flags));
+		if (uvm  && pgtbl_mapping_add(pgtbl, mapat, pf, PGTBL_USER_DEF)) assert(0);
+		if (!uvm && pgtbl_cosframe_add(pgtbl, mapat, pf, PGTBL_COSFRAME)) assert(0);
+		assert((void*)p == pgtbl_lkup(pgtbl, user_vaddr+i*PAGE_SIZE, &flags));
 	}
 
 	return 0;
@@ -112,9 +112,9 @@ kern_boot_thd(struct captbl *ct, void *thd_mem, void *tcap_mem)
 void
 kern_boot_comp(void)
 {
-        int ret = 0, nkmemptes;
-        struct captbl *ct;
-        unsigned int i;
+	int ret = 0, nkmemptes;
+	struct captbl *ct;
+	unsigned int i;
 	u8_t *boot_comp_captbl;
 	pgtbl_t pgtbl = (pgtbl_t)chal_va2pa(&boot_comp_pgd), untyped_pgd;
 	void *thd_mem, *tcap_mem;
@@ -123,25 +123,25 @@ kern_boot_comp(void)
 	printk("Setting up the booter component.\n");
 
 	boot_comp_captbl = mem_boot_alloc(BOOT_CAPTBL_NPAGES);
-        ct = captbl_create(boot_comp_captbl);
-        assert(ct);
+	ct = captbl_create(boot_comp_captbl);
+	assert(ct);
 
-        /* expand the captbl to use multiple pages. */
-        for (i = PAGE_SIZE ; i < BOOT_CAPTBL_NPAGES*PAGE_SIZE ; i += PAGE_SIZE) {
-                captbl_init(boot_comp_captbl + i, 1);
-                ret = captbl_expand(ct, (i - PAGE_SIZE/2)/CAPTBL_LEAFSZ, captbl_maxdepth(), boot_comp_captbl + i);
-                assert(!ret);
-                captbl_init(boot_comp_captbl + PAGE_SIZE + PAGE_SIZE/2, 1);
-                ret = captbl_expand(ct, i/CAPTBL_LEAFSZ, captbl_maxdepth(), boot_comp_captbl + i + PAGE_SIZE/2);
-                assert(!ret);
-        }
+	/* expand the captbl to use multiple pages. */
+	for (i = PAGE_SIZE ; i < BOOT_CAPTBL_NPAGES*PAGE_SIZE ; i += PAGE_SIZE) {
+		captbl_init(boot_comp_captbl + i, 1);
+		ret = captbl_expand(ct, (i - PAGE_SIZE/2)/CAPTBL_LEAFSZ, captbl_maxdepth(), boot_comp_captbl + i);
+		assert(!ret);
+		captbl_init(boot_comp_captbl + PAGE_SIZE + PAGE_SIZE/2, 1);
+		ret = captbl_expand(ct, i/CAPTBL_LEAFSZ, captbl_maxdepth(), boot_comp_captbl + i + PAGE_SIZE/2);
+		assert(!ret);
+	}
 
 	thd_mem  = mem_boot_alloc(1);
 	tcap_mem = mem_boot_alloc(1);
 	assert(thd_mem && tcap_mem);
-        if (captbl_activate_boot(ct, BOOT_CAPTBL_SELF_CT)) assert(0);
-        if (sret_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_SRET)) assert(0);
-        if (pgtbl_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_SELF_PT, pgtbl, 0)) assert(0);
+	if (captbl_activate_boot(ct, BOOT_CAPTBL_SELF_CT)) assert(0);
+	if (sret_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_SRET)) assert(0);
+	if (pgtbl_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_SELF_PT, pgtbl, 0)) assert(0);
 
 	hw_asndcap_init();
 	if (hw_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_SELF_INITHW_BASE, hw_bitmap)) assert(0);
@@ -160,6 +160,7 @@ kern_boot_comp(void)
 	 * PTEs
 	 */
 	untyped_pgd = (pgtbl_t)chal_va2pa(mem_boot_alloc(1));
+	memcpy((void *)chal_pa2va((paddr_t)untyped_pgd) + KERNEL_PGD_REGION_OFFSET, (void *)&boot_comp_pgd + KERNEL_PGD_REGION_OFFSET, KERNEL_PGD_REGION_SIZE);
 	if (pgtbl_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_SELF_UNTYPED_PT, untyped_pgd, 0)) assert(0);
 	nkmemptes = boot_nptes(mem_utmem_end() - mem_boot_end());
 	ret = boot_pgtbl_mappings_add(ct, BOOT_CAPTBL_SELF_UNTYPED_PT, BOOT_CAPTBL_KM_PTE, "untyped memory", mem_boot_nalloc_end(nkmemptes),
@@ -167,6 +168,7 @@ kern_boot_comp(void)
 	assert(ret == 0);
 	/* Shut off further bump allocations */
 	glb_memlayout.allocs_avail = 0;
+	ivshmem_boot_init(ct);
 
 	if (comp_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_SELF_COMP, BOOT_CAPTBL_SELF_CT,
 			  BOOT_CAPTBL_SELF_PT, 0, (vaddr_t)mem_bootc_entry(), NULL)) assert(0);

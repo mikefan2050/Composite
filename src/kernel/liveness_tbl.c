@@ -1,12 +1,12 @@
 #include "include/liveness_tbl.h"
 
 void
-ltbl_init(void)
+ltbl_init(struct liveness_entry *l)
 {
 	int i;
 
 	for (i = 0 ; i < LTBL_ENTS ; i++) {
-		__liveness_tbl[i].epoch = 0;
-		__liveness_tbl[i].deact_timestamp = 0;
+		l[i].epoch = 0;
+		l[i].deact_timestamp = 0;
 	}
 }

@@ -172,6 +172,6 @@ ltbl_timestamp_update(livenessid_t id)
 	return 0;
 }
 
-void ltbl_init(void);
+void ltbl_init(struct liveness_entry *l);
 
 #endif /* LIVENESS_TBL_H */

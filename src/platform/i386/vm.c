@@ -56,6 +56,7 @@ kern_setup_image(void)
 {
 	unsigned long i, j;
 	paddr_t kern_pa_start, kern_pa_end;
+	u32_t page;
 
 	printk("\tSetting up initial page directory.\n");
 	kern_pa_start = round_to_pgd_page(chal_va2pa(mem_kern_start())); /* likely 0 */
@@ -76,7 +77,7 @@ kern_setup_image(void)
 	printk("ACPI initialization\n");
 	void *rsdt = acpi_find_rsdt();
 	if (rsdt) {
-        	u32_t page = round_up_to_pgd_page(rsdt) - (1 << 22);
+		page = round_up_to_pgd_page(rsdt) - (1 << 22);
 		boot_comp_pgd[j] = page | PGTBL_PRESENT | PGTBL_WRITABLE | PGTBL_SUPER | PGTBL_GLOBAL;
 		acpi_set_rsdt_page(j);
 		j++;
@@ -92,11 +93,13 @@ kern_setup_image(void)
 
 	/* FIXME: Ugly hack to get the physical page with the PCI IVSHMEM mapped */
 	if (ivshmem_phy_addr) {
-        	u32_t page = round_to_pgd_page(ivshmem_phy_addr);
-		boot_comp_pgd[j] = page | PGTBL_PRESENT | PGTBL_WRITABLE | PGTBL_SUPER | PGTBL_GLOBAL;
-		printk("kern_setup_image ivshmem j %d old %x page %x\n", j, ivshmem_phy_addr, page);
+		printk("live tbl %d global reytye %d local %d\n", sizeof(__liveness_tbl), sizeof(glb_retype_tbl), sizeof(retype_tbl)/NUM_CPU);
+		page = round_to_pgd_page(ivshmem_phy_addr);
+		assert(page == ivshmem_phy_addr);
 		ivshmem_set_page(j);
-		j++;
+		for(; page<ivshmem_phy_addr+ivshmem_sz; page += PGD_RANGE, j++) {
+			boot_comp_pgd[j] = page | PGTBL_PRESENT | PGTBL_WRITABLE | PGTBL_SUPER | PGTBL_GLOBAL;
+		}
 	}
 
 	for ( ; j < PAGE_SIZE/sizeof(unsigned int) ; i += PGD_RANGE, j++) {

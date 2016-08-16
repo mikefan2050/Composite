@@ -2,6 +2,7 @@
 #include <shared/cos_types.h>
 #include "kernel.h"
 #include "mem_layout.h"
+#include "ivshmem.h"
 
 u32_t free_thd_id = 1;
 char timer_detector[PAGE_SIZE] PAGE_ALIGNED;
@@ -11,11 +12,25 @@ paddr_t chal_kernel_mem_pa;
 
 void *
 chal_pa2va(paddr_t address)
-{ return (void*)(address+COS_MEM_KERN_START_VA); }
+{ 
+	if (ivshmem_addr) {
+		if (address >= ivshmem_phy_addr && address < ivshmem_phy_addr+IVSHMEM_TOT_SIZE) {
+			return (void *)(address-ivshmem_phy_addr+ivshmem_addr);
+		}
+	}
+	return (void*)(address+COS_MEM_KERN_START_VA); 
+}
 
 paddr_t
 chal_va2pa(void *address)
-{ return (paddr_t)(address-COS_MEM_KERN_START_VA); }
+{ 
+	if (ivshmem_addr) {
+		if (address >= (void *)ivshmem_addr && address < (void *)(ivshmem_addr+IVSHMEM_TOT_SIZE)) {
+			return (paddr_t)(address-ivshmem_addr+ivshmem_phy_addr);
+		}
+	}
+	return (paddr_t)(address-COS_MEM_KERN_START_VA); 
+}
 
 void *
 chal_alloc_kern_mem(int order)
