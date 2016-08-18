@@ -1,5 +1,6 @@
 #include "include/liveness_tbl.h"
 
+struct liveness_entry *__pmem_liveness_tbl;
 void
 ltbl_init(struct liveness_entry *l)
 {

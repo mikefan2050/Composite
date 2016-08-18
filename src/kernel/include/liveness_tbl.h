@@ -74,14 +74,16 @@ ERT_CREATE(__ltbl, ltbl, 1, 0, sizeof(int), LTBL_ENT_ORDER,		\
 	   __ltbl_setleaf, __ltbl_getleaf, ert_defresolve);
 
 extern struct liveness_entry __liveness_tbl[LTBL_ENTS];
-#define LTBL_REF() ((struct ltbl *)__liveness_tbl)
+extern struct liveness_entry *__pmem_liveness_tbl;
+#define LTBL_REF(pmem) ((pmem) ? (struct ltbl *)__pmem_liveness_tbl : ((struct ltbl *)__liveness_tbl))
 
 static inline int
 ltbl_isalive(struct liveness_data *ld)
 {
 	u64_t *epoch;
+	int pmem = (ld->id >= LTBL_ENTS);
 
-	epoch = __ltbl_lkupan(LTBL_REF(), ld->id, __ltbl_maxdepth()+1, NULL);
+	epoch = __ltbl_lkupan(LTBL_REF(pmem), ld->id-pmem*LTBL_ENTS, __ltbl_maxdepth()+1, NULL);
 	if (unlikely(*epoch != ld->epoch)) return 0;
 	return 1;
 }
@@ -92,8 +94,9 @@ ltbl_expire(struct liveness_data *ld)
 {
 	struct liveness_entry *ent;
 	u64_t old_v;
+	int pmem = (ld->id >= LTBL_ENTS);
 
-	ent = __ltbl_lkupan(LTBL_REF(), ld->id, __ltbl_maxdepth(), NULL);
+	ent = __ltbl_lkupan(LTBL_REF(pmem), ld->id-pmem*LTBL_ENTS, __ltbl_maxdepth(), NULL);
 	old_v = ent->epoch;
 
 	rdtscll(ent->deact_timestamp);
@@ -115,8 +118,9 @@ ltbl_isfreeable(struct liveness_data *ld, u64_t quiescence_period)
 {
 	struct liveness_entry *ent;
 	u64_t ts;
+	int pmem = (ld->id >= LTBL_ENTS);
 
-	ent = __ltbl_lkupan(LTBL_REF(), ld->id, __ltbl_maxdepth(), NULL);
+	ent = __ltbl_lkupan(LTBL_REF(pmem), ld->id-pmem*LTBL_ENTS, __ltbl_maxdepth(), NULL);
 	rdtscll(ts);
 
 	if (ent->deact_timestamp + quiescence_period < ts) return 1;
@@ -128,9 +132,9 @@ static inline int
 ltbl_get(livenessid_t id, struct liveness_data *ld)
 {
 	u64_t *e;
-	if (unlikely(id >= LTBL_ENTS)) return -EINVAL;
+	int pmem = (id >= LTBL_ENTS);
 
-	e = (u64_t*)__ltbl_lkupan(LTBL_REF(), id, __ltbl_maxdepth()+1, NULL);
+	e = (u64_t*)__ltbl_lkupan(LTBL_REF(pmem), id-pmem*LTBL_ENTS, __ltbl_maxdepth()+1, NULL);
 	assert(e);
 	
 	ld->epoch = *e;
@@ -143,9 +147,9 @@ static inline int
 ltbl_get_timestamp(livenessid_t id, u64_t *ts)
 {
 	struct liveness_entry *ent;
+	int pmem = (id >= LTBL_ENTS);
 
-	if (unlikely(id >= LTBL_ENTS)) return -EINVAL;
-	ent = __ltbl_lkupan(LTBL_REF(), id, __ltbl_maxdepth()+1, NULL);
+	ent = __ltbl_lkupan(LTBL_REF(pmem), id-pmem*LTBL_ENTS, __ltbl_maxdepth()+1, NULL);
 	assert(ent);
 
 	*ts = ent->deact_timestamp;
@@ -157,10 +161,9 @@ static inline int
 ltbl_timestamp_update(livenessid_t id)
 {
 	struct liveness_entry *ent;
+	int pmem = (id >= LTBL_ENTS);
 
-	if (unlikely(id >= LTBL_ENTS)) return -EINVAL;
-
-	ent = __ltbl_lkupan(LTBL_REF(), id, __ltbl_maxdepth(), NULL);
+	ent = __ltbl_lkupan(LTBL_REF(pmem), id-pmem*LTBL_ENTS, __ltbl_maxdepth(), NULL);
 
 	/* Barrier here to ensure tsc is taken after store
 	 * instruction (avoid out-of-order execution). */
