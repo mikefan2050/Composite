@@ -1,5 +1,11 @@
 #include "micro_booter.h"
 
+struct meta_header {
+	char magic[MAGIC_LEN];
+	int kernel_done, boot_done, node_num, boot_num;
+};
+struct meta_header *ivshmem_meta;
+int cur_node;
 static void
 thd_fn_perf(void *d)
 {
@@ -365,11 +371,14 @@ test_timer(void)
 }
 
 long long midinv_cycles = 0LL;
+int glb_comp_var = 0;
 
 int
 test_serverfn(int a, int b, int c)
 {
 	rdtscll(midinv_cycles);
+	printc("shared var %d\n", glb_comp_var);
+	glb_comp_var += 100;
 	return 0xDEADBEEF;
 }
 
@@ -471,6 +480,68 @@ test_captbl_expand(void)
 	PRINTC("Captbl expand SUCCESS.\n");
 }
 
+struct cos_compinfo glb_comp_info;
+void
+test_inv_global(void)
+{
+	pgtblcap_t glb_comp_pt;
+	captblcap_t glb_comp_ct;
+	compcap_t glb_comp;
+	sinvcap_t ic;
+	vaddr_t range, addr, src, dst;
+	unsigned int r, i;
+
+	printc("Test global memory invcation\n");
+	cos_meminfo_init(&booter_info.pmem_mi, BOOT_MEM_KM_BASE, IVSHMEM_UNTYPE_SIZE, BOOT_CAPTBL_PMEM_PT_BASE);
+	ivshmem_meta = cos_mem_alias_pmem(&booter_info, &booter_info, 0, 0);
+	printc("meta %x magic %s done %d\n", ivshmem_meta, ivshmem_meta->magic, ivshmem_meta->boot_done);
+
+	if (ivshmem_meta->boot_done) {
+		struct cos_compinfo temp;
+		cur_node = ivshmem_meta->boot_num++;
+		temp.captbl_cap = BOOT_CAPTBL_PMEM_CT_BASE;
+		glb_comp = cos_cap_cpy(&booter_info, &temp, CAP_CAPTBL, 0);
+		pmem_livenessid_frontier = IVSHMEM_LTBL_TOT_ENTS + cur_node*IVSHMEM_LTBL_NODE_RANGE;
+		goto inv;
+	}
+
+	cur_node = 0;
+	ivshmem_meta->boot_num = 1;
+	pmem_livenessid_frontier = IVSHMEM_LTBL_TOT_ENTS + cur_node*IVSHMEM_LTBL_NODE_RANGE;
+
+	glb_comp_ct = cos_captbl_alloc_ext(&booter_info, 1);
+	glb_comp_pt = cos_pgtbl_alloc_ext(&booter_info, 1);
+	glb_comp    = cos_comp_alloc_ext(&booter_info, glb_comp_ct, glb_comp_pt, NULL, 1);
+	for(i=1; i<NUM_NODE; i++) {
+		cos_cap_cpy_captbl_at(BOOT_CAPTBL_PMEM_CT_BASE+(i+1)*CAP32B_IDSZ, 0, BOOT_CAPTBL_SELF_CT, glb_comp);
+	}
+	cos_compinfo_init(&glb_comp_info, glb_comp_pt, glb_comp_ct, glb_comp, (vaddr_t)BOOT_MEM_VM_BASE, BOOT_CAPTBL_FREE, &booter_info);
+
+	range = (vaddr_t)cos_get_heap_ptr() - BOOT_MEM_VM_BASE;
+	assert(range > 0);
+	printc("\tMapping in Booter component's virtual memory (range:%lu)\n", range);
+	for (addr = 0 ; addr < range ; addr += PAGE_SIZE) {
+		src = (vaddr_t)cos_page_bump_alloc_ext(&booter_info, 1);
+		assert(src);
+
+		memcpy((void *)src, (void *)(BOOT_MEM_VM_BASE + addr), PAGE_SIZE);
+
+		dst = cos_mem_alias_ext(&glb_comp_info, &booter_info, src, 1);
+		assert(dst);
+	}
+
+	ivshmem_meta->boot_done = 1;
+
+inv:
+	ic = cos_sinv_alloc(&booter_info, glb_comp, (vaddr_t)__inv_test_serverfn);
+	assert(ic > 0);
+
+	r = call_cap_mb(ic, 1, 2, 3);
+	PRINTC("Return from invocation: %x (== DEADBEEF?)\n", r);
+	printc("Test global memory invcation DONE!!\n");
+	return ;
+}
+
 void
 test_run(void)
 {
@@ -490,6 +561,7 @@ test_run(void)
 	test_async_endpoints();
 	test_async_endpoints_perf();
 
+	test_inv_global();
 	test_inv();
 	test_inv_perf();
 
