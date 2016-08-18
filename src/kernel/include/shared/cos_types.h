@@ -250,7 +250,8 @@ enum {
 	BOOT_CAPTBL_COMP0_PT           = 22,
 	BOOT_CAPTBL_COMP0_COMP         = 24,
 	BOOT_CAPTBL_PMEM_PT_BASE       = 28,
-	BOOT_CAPTBL_SELF_INITTHD_BASE  = round_up_to_pow2(BOOT_CAPTBL_PMEM_PT_BASE + (1+NUM_NODE)*CAP32B_IDSZ, CAPMAX_ENTRY_SZ),
+	BOOT_CAPTBL_PMEM_CT_BASE       = BOOT_CAPTBL_PMEM_PT_BASE + (1+NUM_NODE)*CAP32B_IDSZ,
+	BOOT_CAPTBL_SELF_INITTHD_BASE  = round_up_to_pow2(BOOT_CAPTBL_PMEM_CT_BASE + (1+NUM_NODE)*CAP32B_IDSZ, CAPMAX_ENTRY_SZ),
 	BOOT_CAPTBL_SELF_INITTCAP_BASE = round_up_to_pow2(BOOT_CAPTBL_SELF_INITTHD_BASE + NUM_CPU_COS*CAP16B_IDSZ, CAPMAX_ENTRY_SZ),
 	BOOT_CAPTBL_SELF_INITRCV_BASE  = round_up_to_pow2(BOOT_CAPTBL_SELF_INITTCAP_BASE + NUM_CPU_COS*CAP16B_IDSZ, CAPMAX_ENTRY_SZ),
 	BOOT_CAPTBL_SELF_INITHW_BASE   = round_up_to_pow2(BOOT_CAPTBL_SELF_INITRCV_BASE + NUM_CPU_COS*CAP64B_IDSZ, CAPMAX_ENTRY_SZ),
@@ -865,4 +866,17 @@ cos_mem_fence(void)
 #define __KERNEL_PERCPU 0
 #endif
 
+#define IVSHMEM_TOT_SIZE     PGD_SIZE*32
+#define IVSHMEM_MAGIC "IVSHMEM"
+#define MAGIC_LEN 8
+#define IVSHMEM_UNTYPE_SIZE  PGD_SIZE*8
+#define PA_IN_IVSHMEM_RANGE(pa) (ivshmem_phy_addr && (pa) >= ivshmem_phy_addr && (pa) < ivshmem_phy_addr+IVSHMEM_TOT_SIZE)
+#define VA_IN_IVSHMEM_RANGE(va) (ivshmem_phy_addr && (va) >= (void *)ivshmem_addr && (va) < (void *)(ivshmem_addr+IVSHMEM_TOT_SIZE))
+#define IVSHMEM_LTBL_ENT_ORDER 20
+#define IVSHMEM_LTBL_TOT_ENTS (1<<IVSHMEM_LTBL_ENT_ORDER)
+#define IVSHMEM_LTBL_NODE_RANGE (IVSHMEM_LTBL_TOT_ENTS/NUM_NODE)
+
+extern paddr_t ivshmem_phy_addr;
+extern vaddr_t ivshmem_addr;
+extern int cur_node;
 #endif /* TYPES_H */

@@ -14,7 +14,7 @@ void *
 chal_pa2va(paddr_t address)
 { 
 	if (ivshmem_addr) {
-		if (address >= ivshmem_phy_addr && address < ivshmem_phy_addr+IVSHMEM_TOT_SIZE) {
+		if (PA_IN_IVSHMEM_RANGE(address)) {
 			return (void *)(address-ivshmem_phy_addr+ivshmem_addr);
 		}
 	}
@@ -25,7 +25,7 @@ paddr_t
 chal_va2pa(void *address)
 { 
 	if (ivshmem_addr) {
-		if (address >= (void *)ivshmem_addr && address < (void *)(ivshmem_addr+IVSHMEM_TOT_SIZE)) {
+		if (VA_IN_IVSHMEM_RANGE(address)) {
 			return (paddr_t)(address-ivshmem_addr+ivshmem_phy_addr);
 		}
 	}
