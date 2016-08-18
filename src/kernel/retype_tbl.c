@@ -15,21 +15,24 @@
 
 struct retype_info     retype_tbl[NUM_CPU]        CACHE_ALIGNED;
 struct retype_info_glb glb_retype_tbl[N_MEM_SETS] CACHE_ALIGNED;
+struct retype_info     *pmem_retype_tbl;
+struct retype_info_glb *pmem_glb_retype_tbl;
 
 /* called to increment or decrement the refcnt. */
 static inline int
 mod_ref_cnt(void *pa, const int op, const int type_check)
 {
-	u32_t idx, old_v;
+	u32_t idx, old_v, pmem;
 	struct retype_entry *retype_entry;
 	union refcnt_atom local_u;
 
 	PA_BOUNDARY_CHECK();
 
-	idx = GET_MEM_IDX(pa);
+	pmem = PA_IN_IVSHMEM_RANGE((paddr_t)pa);
+	idx = GET_MEM_IDX(pa, pmem);
 	assert(idx < N_MEM_SETS);
 
-	retype_entry = GET_RETYPE_ENTRY(idx);
+	retype_entry = GET_RETYPE_ENTRY(idx, pmem);
 	old_v = local_u.v = retype_entry->refcnt_atom.v;
 	/* only allow to ref user or kernel typed memory set */
 	if (unlikely((local_u.type != RETYPETBL_USER) && (local_u.type != RETYPETBL_KERN))) return -EPERM;
@@ -74,17 +77,18 @@ retypetbl_deref(void *pa)
 static inline int
 mod_mem_type(void *pa, const mem_type_t type)
 {
-	int i, ret;
+	int i, ret, pmem;
 	u32_t idx, old_type;
 	struct retype_info_glb *glb_retype_info;
 
 	assert(pa); 	/* cannot be NULL: kernel image takes that space */
 	PA_BOUNDARY_CHECK();
+	pmem = PA_IN_IVSHMEM_RANGE((paddr_t)pa);
 
-	idx = GET_MEM_IDX(pa);
+	idx = GET_MEM_IDX(pa, pmem);
 	assert(idx < N_MEM_SETS);
 
-	glb_retype_info = GET_GLB_RETYPE_ENTRY(idx);
+	glb_retype_info = GET_GLB_RETYPE_ENTRY(idx, pmem);
 	old_type = glb_retype_info->type;
 
 	/* only can retype untyped mem sets. */
@@ -104,8 +108,14 @@ mod_mem_type(void *pa, const mem_type_t type)
 	/* Set the retyping flag successfully. Now nobody else can
 	 * change this memory set. Update the per-core retype entries
 	 * next. */
-	for (i = 0; i < NUM_CPU; i++) {
-		retype_tbl[i].mem_set[idx].refcnt_atom.type = type;
+	if (!pmem) {
+		for (i = 0; i < NUM_CPU; i++) {
+			retype_tbl[i].mem_set[idx].refcnt_atom.type = type;
+		}
+	} else {
+		for (i = 0; i < NUM_NODE; i++) {
+			pmem_retype_tbl[i].mem_set[idx].refcnt_atom.type = type;
+		}
 	}
 	cos_mem_fence();
 
@@ -138,15 +148,24 @@ retypetbl_retype2frame(void *pa)
 	union refcnt_atom local_u;
 	u32_t old_v, idx;
 	u64_t last_unmap;
-	int cpu, ret, ref_sum;
+	int cpu, ret, ref_sum, pmem, local_num;
 	mem_type_t old_type;
+	struct retype_info *local_retype_tbl;
 
 	PA_BOUNDARY_CHECK();
+	pmem = PA_IN_IVSHMEM_RANGE((paddr_t)pa);
+	if (pmem) {
+		local_retype_tbl = pmem_retype_tbl;
+		local_num = NUM_NODE;
+	} else {
+		local_retype_tbl = retype_tbl;
+		local_num = NUM_CPU;
+	}
 
-	idx = GET_MEM_IDX(pa);
+	idx = GET_MEM_IDX(pa, pmem);
 	assert(idx < N_MEM_SETS);
 
-	glb_retype_info = GET_GLB_RETYPE_ENTRY(idx);
+	glb_retype_info = GET_GLB_RETYPE_ENTRY(idx, pmem);
 	old_type = glb_retype_info->type;
 	/* only can retype untyped mem sets. */
 	if (unlikely(old_type != RETYPETBL_USER && old_type != RETYPETBL_KERN)) return -EPERM;
@@ -156,20 +175,20 @@ retypetbl_retype2frame(void *pa)
 	if (ret != CAS_SUCCESS) return ret;
 
 	last_unmap = 0;
-	for (ref_sum = 0, cpu = 0; cpu < NUM_CPU; cpu++) {
+	for (ref_sum = 0, cpu = 0; cpu < local_num; cpu++) {
 		/* Keep in mind that, ref_cnt on each core could be
 		 * negative. */
-		old_v = local_u.v = retype_tbl[cpu].mem_set[idx].refcnt_atom.v;
+		old_v = local_u.v = local_retype_tbl[cpu].mem_set[idx].refcnt_atom.v;
 		assert(local_u.type == old_type || local_u.type == RETYPETBL_RETYPING);
 
 		local_u.type = RETYPETBL_RETYPING;
-		ret = retypetbl_cas(&(retype_tbl[cpu].mem_set[idx].refcnt_atom.v), old_v, local_u.v);
+		ret = retypetbl_cas(&(local_retype_tbl[cpu].mem_set[idx].refcnt_atom.v), old_v, local_u.v);
 		if (ret != CAS_SUCCESS) cos_throw(restore_all, -ECASFAIL);
 
 		ref_sum += local_u.ref_cnt;
 		/* for tlb quiescence check */
-		if (last_unmap < retype_tbl[cpu].mem_set[idx].last_unmap)
-			last_unmap = retype_tbl[cpu].mem_set[idx].last_unmap;
+		if (last_unmap < local_retype_tbl[cpu].mem_set[idx].last_unmap)
+			last_unmap = local_retype_tbl[cpu].mem_set[idx].last_unmap;
 	}
 	/* only can retype when there's no more mapping */
 	if (ref_sum != 0) cos_throw(restore_all, -EINVAL);
@@ -184,9 +203,9 @@ retypetbl_retype2frame(void *pa)
 	/**** Legit to retype! ****/
 	/**************************/
 	/* we already locked all entries. feel free to change here. */
-	for (cpu = 0; cpu < NUM_CPU; cpu++) {
-		retype_tbl[cpu].mem_set[idx].refcnt_atom.ref_cnt = 0;
-		retype_tbl[cpu].mem_set[idx].refcnt_atom.type    = RETYPETBL_UNTYPED;
+	for (cpu = 0; cpu < local_num; cpu++) {
+		local_retype_tbl[cpu].mem_set[idx].refcnt_atom.ref_cnt = 0;
+		local_retype_tbl[cpu].mem_set[idx].refcnt_atom.type    = RETYPETBL_UNTYPED;
 	}
 	cos_mem_fence();
 
@@ -203,9 +222,9 @@ restore_all:
 	/* cpu is the one we tried to modify but fail. So we need to
 	 * restore [0, cpu-1]. */
 	for (cpu--; cpu >= 0; cpu--) {
-		old_v = local_u.v = retype_tbl[cpu].mem_set[idx].refcnt_atom.v;
+		old_v = local_u.v = local_retype_tbl[cpu].mem_set[idx].refcnt_atom.v;
 		local_u.type = old_type;
-		retypetbl_cas(&(retype_tbl[cpu].mem_set[idx].refcnt_atom.v), old_v, local_u.v);
+		retypetbl_cas(&(local_retype_tbl[cpu].mem_set[idx].refcnt_atom.v), old_v, local_u.v);
 	}
 	/* and global entry. */
 	{

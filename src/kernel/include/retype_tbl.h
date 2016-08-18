@@ -71,20 +71,24 @@ struct retype_info_glb {
 } CACHE_ALIGNED;
 
 extern struct retype_info_glb glb_retype_tbl[N_MEM_SETS];
+extern struct retype_info     *pmem_retype_tbl;
+extern struct retype_info_glb *pmem_glb_retype_tbl;
 
 #define COS_KMEM_BOUND (chal_kernel_mem_pa + PAGE_SIZE * COS_KERNEL_MEMORY)
 
 /* physical address boundary check */
 #define PA_BOUNDARY_CHECK() do { if (unlikely(!(((u32_t)pa >= COS_MEM_START) && ((u32_t)pa < COS_MEM_BOUND)) && \
-					      !(((u32_t)pa >= chal_kernel_mem_pa) && ((u32_t)pa < COS_KMEM_BOUND)))) return -EINVAL; } while (0)
+					      !(((u32_t)pa >= chal_kernel_mem_pa) && ((u32_t)pa < COS_KMEM_BOUND))) && \
+					      !PA_IN_IVSHMEM_RANGE((paddr_t)pa)) return -EINVAL; } while (0)
 
 /* get the index of the memory set. */
-#define GET_MEM_IDX(pa) (((u32_t)pa >= COS_MEM_START) ? (((u32_t)(pa) - COS_MEM_START) / RETYPE_MEM_SIZE) \
-			 : (((u32_t)(pa) - chal_kernel_mem_pa) / RETYPE_MEM_SIZE + N_USER_MEM_SETS))
+#define GET_MEM_IDX(pa, pmem) (pmem ? (((u32_t)(pa) - ivshmem_phy_addr) / RETYPE_MEM_SIZE) \
+			 : (((u32_t)pa >= COS_MEM_START) ? (((u32_t)(pa) - COS_MEM_START) / RETYPE_MEM_SIZE) \
+			 : (((u32_t)(pa) - chal_kernel_mem_pa) / RETYPE_MEM_SIZE + N_USER_MEM_SETS)))
 /* get the memory set struct of the current cpu */
-#define GET_RETYPE_ENTRY(idx) ((&(retype_tbl[get_cpuid()].mem_set[idx])))
+#define GET_RETYPE_ENTRY(idx, pmem) (pmem ? (&(pmem_retype_tbl[cur_node].mem_set[idx])) : (&(retype_tbl[get_cpuid()].mem_set[idx])))
 /* get the global memory set struct (used for retyping only). */
-#define GET_GLB_RETYPE_ENTRY(idx) ((&(glb_retype_tbl[idx])))
+#define GET_GLB_RETYPE_ENTRY(idx, pmem) (pmem ? (&(pmem_glb_retype_tbl[idx])) : (&(glb_retype_tbl[idx])))
 
 #define cos_throw(label, errno) { ret = (errno); goto label; }
 
