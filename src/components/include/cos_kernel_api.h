@@ -21,6 +21,8 @@ typedef capid_t captblcap_t;
 typedef capid_t pgtblcap_t;
 typedef capid_t hwcap_t;
 
+extern int cur_node;
+extern u32_t pmem_livenessid_frontier;
 /* Memory source information */
 struct cos_meminfo {
 	vaddr_t untyped_ptr,      umem_ptr,      kmem_ptr;
@@ -41,6 +43,7 @@ struct cos_compinfo {
 	/* the source of memory */
 	struct cos_compinfo *memsrc; /* might be self-referential */
 	struct cos_meminfo mi;	     /* only populated for the component with real memory */
+	struct cos_meminfo pmem_mi;	     /* only populated for the component with real memory */
 };
 
 void cos_compinfo_init(struct cos_compinfo *ci, pgtblcap_t pgtbl_cap, captblcap_t captbl_cap, compcap_t comp_cap, vaddr_t heap_ptr, capid_t cap_frontier, struct cos_compinfo *ci_resources);
@@ -106,5 +109,12 @@ int cos_hw_detach(hwcap_t hwc, hwid_t hwid);
 void *cos_hw_map(struct cos_compinfo *ci, hwcap_t hwc, paddr_t pa, unsigned int len);
 int cos_hw_cycles_per_usec(hwcap_t hwc);
 
+void *cos_page_bump_alloc_ext(struct cos_compinfo *ci, int pmem);
+vaddr_t cos_mem_alias_pmem(struct cos_compinfo *dstci, struct cos_compinfo *srcci, vaddr_t src, int pmem);
+vaddr_t cos_mem_alias_ext(struct cos_compinfo *dstci, struct cos_compinfo *srcci, vaddr_t src, int pmem);
+compcap_t cos_comp_alloc_ext(struct cos_compinfo *ci, captblcap_t ctc, pgtblcap_t ptc, vaddr_t entry, int pmem);
+captblcap_t cos_captbl_alloc_ext(struct cos_compinfo *ci, int pmem);
+pgtblcap_t cos_pgtbl_alloc_ext(struct cos_compinfo *ci, int pmem);
+int cos_cap_cpy_captbl_at(capid_t dstci, capid_t dstcap, capid_t srcci, capid_t srccap);
 
 #endif /* COS_KERNEL_API_H */

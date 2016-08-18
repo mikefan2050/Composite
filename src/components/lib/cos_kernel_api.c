@@ -78,30 +78,33 @@ cos_compinfo_init(struct cos_compinfo *ci, pgtblcap_t pgtbl_cap, captblcap_t cap
 /**************** [Memory Capability Allocation Functions] ***************/
 
 static vaddr_t
-__mem_bump_alloc(struct cos_compinfo *__ci, int km, int retype)
+__mem_bump_alloc(struct cos_compinfo *__ci, int km, int retype, int pmem)
 {
 	vaddr_t ret = 0;
 	struct cos_compinfo *ci;
 	vaddr_t *ptr, *frontier;
+	struct cos_meminfo *mi;
 
 	printd("__mem_bump_alloc\n");
 
 	assert(__ci);
 	ci = __compinfo_metacap(__ci);
 	assert(ci && ci == __compinfo_metacap(__ci));
+	if (!pmem) mi = &ci->mi;
+	else mi = &ci->pmem_mi;
 
 	if (km) {
-		ptr      = &ci->mi.kmem_ptr;
-		frontier = &ci->mi.kmem_frontier;
+		ptr      = &mi->kmem_ptr;
+		frontier = &mi->kmem_frontier;
 	} else {
-		ptr      = &ci->mi.umem_ptr;
-		frontier = &ci->mi.umem_frontier;
+		ptr      = &mi->umem_ptr;
+		frontier = &mi->umem_frontier;
 	}
 	if (*ptr == *frontier) {
 		/* TODO: expand frontier if introspection says there is more memory */
-		if (ci->mi.untyped_ptr == ci->mi.untyped_frontier) return 0;
-		ret                 = ci->mi.untyped_ptr;
-		ci->mi.untyped_ptr += RETYPE_MEM_SIZE; /* TODO: atomic */
+		if (mi->untyped_ptr == mi->untyped_frontier) return 0;
+		ret                 = mi->untyped_ptr;
+		mi->untyped_ptr += RETYPE_MEM_SIZE; /* TODO: atomic */
 		*ptr                = ret;
 		*frontier           = ret + RETYPE_MEM_SIZE;
 	}
@@ -109,7 +112,7 @@ __mem_bump_alloc(struct cos_compinfo *__ci, int km, int retype)
 	if (retype && (ret % RETYPE_MEM_SIZE == 0)) {
 		/* are we dealing with a kernel memory allocation? */
 		syscall_op_t op = km ? CAPTBL_OP_MEM_RETYPE2KERN : CAPTBL_OP_MEM_RETYPE2USER;
-		if (call_cap_op(ci->mi.pgtbl_cap, op, ret, 0, 0, 0)) return 0;
+		if (call_cap_op(mi->pgtbl_cap, op, ret, 0, 0, 0)) return 0;
 	}
 
 	*ptr += PAGE_SIZE;
@@ -118,33 +121,33 @@ __mem_bump_alloc(struct cos_compinfo *__ci, int km, int retype)
 }
 
 static vaddr_t
-__kmem_bump_alloc(struct cos_compinfo *ci)
+__kmem_bump_alloc(struct cos_compinfo *ci, int pmem)
 {
 	printd("__kmem_bump_alloc\n");
-	return __mem_bump_alloc(ci, 1, 1);
+	return __mem_bump_alloc(ci, 1, 1, pmem);
 }
 
 /* this should back-up to using untyped memory... */
 static vaddr_t
-__umem_bump_alloc(struct cos_compinfo *ci)
+__umem_bump_alloc(struct cos_compinfo *ci, int pmem)
 {
 	printd("__umem_bump_alloc\n");
-	return __mem_bump_alloc(ci, 0, 1);
+	return __mem_bump_alloc(ci, 0, 1, pmem);
 }
 
 static vaddr_t
-__untyped_bump_alloc(struct cos_compinfo *ci)
+__untyped_bump_alloc(struct cos_compinfo *ci, int pmem)
 {
 	printd("__umem_bump_alloc\n");
-	return __mem_bump_alloc(ci, 1, 0);
+	return __mem_bump_alloc(ci, 1, 0, pmem);
 }
 
 /**************** [Capability Allocation Functions] ****************/
 
-static capid_t __capid_bump_alloc(struct cos_compinfo *ci, cap_t cap);
+static capid_t __capid_bump_alloc(struct cos_compinfo *ci, cap_t cap, int pmem);
 
 static int
-__capid_captbl_check_expand(struct cos_compinfo *ci)
+__capid_captbl_check_expand(struct cos_compinfo *ci, int pmem)
 {
 	/* the compinfo that tracks/allocates resources */
 	struct cos_compinfo *meta = __compinfo_metacap(ci);
@@ -155,9 +158,12 @@ __capid_captbl_check_expand(struct cos_compinfo *ci)
 	capid_t captblcap;
 	capid_t captblid_add;
 	vaddr_t kmem;
+	struct cos_meminfo *mi;
 
 	/* ensure that we have bounded structure, and bounded recursion */
 	assert(__compinfo_metacap(meta) == meta);
+	if (!pmem) mi = &meta->mi;
+	else mi = &meta->pmem_mi;
 
 	printd("__capid_captbl_check_expand\n");
 	/*
@@ -192,14 +198,14 @@ __capid_captbl_check_expand(struct cos_compinfo *ci)
 	/* Common case: */
 	if (likely(ci->cap_frontier != frontier)) return 0;
 
-	kmem = __kmem_bump_alloc(ci);
+	kmem = __kmem_bump_alloc(ci, pmem);
 	assert(kmem); /* FIXME: should have a failure semantics for capids */
 
 	if (self_resources) {
 		captblcap = frontier;
 	} else {
 		/* Recursive call: can recur maximum 2 times. */
-		captblcap = __capid_bump_alloc(meta, CAP_CAPTBL);
+		captblcap = __capid_bump_alloc(meta, CAP_CAPTBL, pmem);
 		assert(captblcap);
 	}
 	captblid_add = ci->caprange_frontier;
@@ -207,7 +213,7 @@ __capid_captbl_check_expand(struct cos_compinfo *ci)
 
 	printd("__capid_captbl_check_expand->pre-captblactivate (%d)\n", CAPTBL_OP_CAPTBLACTIVATE);
 	/* captbl internal node allocated with the resource provider's captbls */
-	if (call_cap_op(meta->captbl_cap, CAPTBL_OP_CAPTBLACTIVATE, captblcap, meta->mi.pgtbl_cap, kmem, 1)) {
+	if (call_cap_op(meta->captbl_cap, CAPTBL_OP_CAPTBLACTIVATE, captblcap, mi->pgtbl_cap, kmem, 1)) {
 		assert(0); /* race condition? */
 		return -1;
 	}
@@ -232,7 +238,7 @@ __capid_captbl_check_expand(struct cos_compinfo *ci)
 }
 
 static capid_t
-__capid_bump_alloc_generic(struct cos_compinfo *ci, capid_t *capsz_frontier, cap_sz_t sz)
+__capid_bump_alloc_generic(struct cos_compinfo *ci, capid_t *capsz_frontier, cap_sz_t sz, int pmem)
 {
 	capid_t ret;
 
@@ -245,7 +251,7 @@ __capid_bump_alloc_generic(struct cos_compinfo *ci, capid_t *capsz_frontier, cap
 	if (*capsz_frontier % CAPMAX_ENTRY_SZ == 0) {
 		*capsz_frontier   = ci->cap_frontier;
 		ci->cap_frontier += CAPMAX_ENTRY_SZ;
-		if (__capid_captbl_check_expand(ci)) return 0;
+		if (__capid_captbl_check_expand(ci, pmem)) return 0;
 	}
 
 	ret              = *capsz_frontier;
@@ -256,7 +262,7 @@ __capid_bump_alloc_generic(struct cos_compinfo *ci, capid_t *capsz_frontier, cap
 
 /* allocate a new capid in the booter. */
 static capid_t
-__capid_bump_alloc(struct cos_compinfo *ci, cap_t cap)
+__capid_bump_alloc(struct cos_compinfo *ci, cap_t cap, int pmem)
 {
 	capid_t ret;
 	unsigned long sz = captbl_idsize(cap);
@@ -277,31 +283,34 @@ __capid_bump_alloc(struct cos_compinfo *ci, cap_t cap)
 	default:
 		return -1;
 	}
-	return __capid_bump_alloc_generic(ci, frontier, sz);
+	return __capid_bump_alloc_generic(ci, frontier, sz, pmem);
 }
 
 /**************** [User Virtual Memory Allocation Functions] ****************/
 
 static vaddr_t
-__bump_mem_expand_range(struct cos_compinfo *ci, pgtblcap_t cipgtbl, vaddr_t mem_ptr, unsigned long mem_sz)
+__bump_mem_expand_range(struct cos_compinfo *ci, pgtblcap_t cipgtbl, vaddr_t mem_ptr, unsigned long mem_sz, int pmem)
 {
 	vaddr_t addr;
 	struct cos_compinfo *meta = __compinfo_metacap(ci);
+	struct cos_meminfo *mi;
 
 	assert(meta == __compinfo_metacap(meta)); /* prevent unbounded structures */
+	if (!pmem) mi = &meta->mi;
+	else mi = &meta->pmem_mi;
 
 	for (addr = mem_ptr ; addr < mem_ptr + mem_sz ; addr += PGD_RANGE) {
 		capid_t pte_cap;
 		vaddr_t ptemem_cap;
 
-		pte_cap    = __capid_bump_alloc(meta, CAP_PGTBL);
-		ptemem_cap = __kmem_bump_alloc(meta);
+		pte_cap    = __capid_bump_alloc(meta, CAP_PGTBL, pmem);
+		ptemem_cap = __kmem_bump_alloc(meta, pmem);
 		/* TODO: handle the case of running out of memory */
 		if (pte_cap == 0 || ptemem_cap == 0) return 0;
 
 		/* PTE */
 		if (call_cap_op(meta->captbl_cap, CAPTBL_OP_PGTBLACTIVATE,
-				pte_cap, meta->mi.pgtbl_cap, ptemem_cap, 1)) {
+				pte_cap, mi->pgtbl_cap, ptemem_cap, 1)) {
 			assert(0); /* race? */
 			return 0;
 		}
@@ -319,36 +328,47 @@ __bump_mem_expand_range(struct cos_compinfo *ci, pgtblcap_t cipgtbl, vaddr_t mem
 }
 
 static void
-__cos_meminfo_populate(struct cos_compinfo *ci, vaddr_t untyped_ptr, unsigned long untyped_sz)
+__cos_meminfo_populate(struct cos_compinfo *ci, vaddr_t untyped_ptr, unsigned long untyped_sz, int pmem)
 {
 	vaddr_t addr, start_addr, retaddr;
 	struct cos_compinfo *meta = __compinfo_metacap(ci);
+	struct cos_meminfo *mi;
 
 	assert(untyped_ptr == round_up_to_pgd_page(untyped_ptr));
 	assert(untyped_sz == round_up_to_pgd_page(untyped_sz));
+	if (!pmem) mi = &meta->mi;
+	else mi = &meta->pmem_mi;
 
-	retaddr = __bump_mem_expand_range(ci, ci->mi.pgtbl_cap, untyped_ptr, untyped_sz);
+	retaddr = __bump_mem_expand_range(ci, ci->mi.pgtbl_cap, untyped_ptr, untyped_sz, pmem);
 	assert(retaddr == untyped_ptr);
 	
-	start_addr                = meta->mi.untyped_frontier - untyped_sz;
-	meta->mi.untyped_frontier = start_addr;
+	start_addr                = mi->untyped_frontier - untyped_sz;
+	mi->untyped_frontier = start_addr;
 
 	for (addr = untyped_ptr ; addr < untyped_ptr + untyped_sz ; addr += PAGE_SIZE, start_addr += PAGE_SIZE) {
-		if (call_cap_op(meta->mi.pgtbl_cap, CAPTBL_OP_MEMMOVE, start_addr, ci->mi.pgtbl_cap, addr, 0)) BUG();
+		if (call_cap_op(mi->pgtbl_cap, CAPTBL_OP_MEMMOVE, start_addr, ci->mi.pgtbl_cap, addr, 0)) BUG();
 	}
+}
+
+static inline void
+__cos_meminfo_alloc_ext(struct cos_compinfo *ci, vaddr_t untyped_ptr, unsigned long untyped_sz, int pmem)
+{
+	struct cos_meminfo *mi;
+	if(!pmem) mi = &ci->mi;
+	else mi = &ci->pmem_mi;
+	__cos_meminfo_populate(ci, untyped_ptr, untyped_sz, pmem);
+
+	mi->untyped_ptr      = mi->umem_ptr = mi->kmem_ptr = mi->umem_frontier = mi->kmem_frontier = untyped_ptr;
+	mi->untyped_frontier = untyped_ptr + untyped_sz;
 }
 
 void
 cos_meminfo_alloc(struct cos_compinfo *ci, vaddr_t untyped_ptr, unsigned long untyped_sz)
 {
-	__cos_meminfo_populate(ci, untyped_ptr, untyped_sz);
-
-	ci->mi.untyped_ptr      = ci->mi.umem_ptr = ci->mi.kmem_ptr = ci->mi.umem_frontier = ci->mi.kmem_frontier = untyped_ptr;
-	ci->mi.untyped_frontier = untyped_ptr + untyped_sz;
+	__cos_meminfo_alloc_ext(ci, untyped_ptr, untyped_sz, 0);
 }
-
 static vaddr_t
-__page_bump_mem_alloc(struct cos_compinfo *ci, vaddr_t *mem_addr, vaddr_t *mem_frontier)
+__page_bump_mem_alloc(struct cos_compinfo *ci, vaddr_t *mem_addr, vaddr_t *mem_frontier, int pmem)
 {
 	vaddr_t heap_vaddr, retaddr;
 	struct cos_compinfo *meta = __compinfo_metacap(ci);
@@ -360,7 +380,7 @@ __page_bump_mem_alloc(struct cos_compinfo *ci, vaddr_t *mem_addr, vaddr_t *mem_f
 
 	/* Do we need to allocate a PTE? */
 	if (heap_vaddr == *mem_frontier) {
-		retaddr = __bump_mem_expand_range(ci, ci->pgtbl_cap, heap_vaddr, PGD_RANGE);
+		retaddr = __bump_mem_expand_range(ci, ci->pgtbl_cap, heap_vaddr, PGD_RANGE, pmem);
 		assert(retaddr == heap_vaddr);
 		*mem_frontier += PGD_RANGE;
 		assert(*mem_frontier == round_up_to_pgd_page(*mem_frontier));
@@ -373,19 +393,20 @@ __page_bump_mem_alloc(struct cos_compinfo *ci, vaddr_t *mem_addr, vaddr_t *mem_f
 }
 
 static vaddr_t
-__page_bump_valloc(struct cos_compinfo *ci)
+__page_bump_valloc(struct cos_compinfo *ci, int pmem)
 {
-	return __page_bump_mem_alloc(ci, &ci->vas_frontier, &ci->vasrange_frontier);
+	return __page_bump_mem_alloc(ci, &ci->vas_frontier, &ci->vasrange_frontier, pmem);
 }
 
 static vaddr_t
-__page_bump_alloc(struct cos_compinfo *ci)
+__page_bump_alloc(struct cos_compinfo *ci, int pmem)
 {
 	struct cos_compinfo *meta = __compinfo_metacap(ci);
 	vaddr_t heap_vaddr, umem;
+	struct cos_meminfo *mi;
 
 	/* Allocate the virtual address to map into */
-	heap_vaddr = __page_bump_valloc(ci);
+	heap_vaddr = __page_bump_valloc(ci, pmem);
 	if (unlikely(!heap_vaddr)) return 0;
 
 	/*
@@ -393,11 +414,13 @@ __page_bump_alloc(struct cos_compinfo *ci)
 	 *
 	 * FIXME: if this fails, we should also back out the page_bump_valloc
 	 */
-	umem = __umem_bump_alloc(ci);
+	umem = __umem_bump_alloc(ci, pmem);
 	if (!umem) return 0;
 
+	if (!pmem) mi = &meta->mi;
+	else mi = &meta->pmem_mi;
 	/* Actually map in the memory. FIXME: cleanup! */
-	if (call_cap_op(meta->mi.pgtbl_cap, CAPTBL_OP_MEMACTIVATE, umem,
+	if (call_cap_op(mi->pgtbl_cap, CAPTBL_OP_MEMACTIVATE, umem,
 			ci->pgtbl_cap, heap_vaddr, 0)) {
 		assert(0);
 		return 0;
@@ -413,39 +436,44 @@ __page_bump_alloc(struct cos_compinfo *ci)
  * namespaces.  This will _only work in the low-level booter_.
  */
 CACHE_ALIGNED static u32_t livenessid_frontier = BOOT_LIVENESS_ID_BASE;
+CACHE_ALIGNED u32_t pmem_livenessid_frontier;
 
 static u32_t
-livenessid_bump_alloc(void)
-{ return livenessid_frontier++; }
+livenessid_bump_alloc(int pmem)
+{ return (pmem) ? pmem_livenessid_frontier++ : livenessid_frontier++; }
 
 /**************** [Kernel Object Allocation] ****************/
 
 static int
-__alloc_mem_cap(struct cos_compinfo *ci, cap_t ct, vaddr_t *kmem, capid_t *cap)
+__alloc_mem_cap(struct cos_compinfo *ci, cap_t ct, vaddr_t *kmem, capid_t *cap, int pmem)
 {
 	printd("__alloc_mem_cap\n");
 
-	*kmem = __kmem_bump_alloc(ci);
+	*kmem = __kmem_bump_alloc(ci, pmem);
 	if (!*kmem)   return -1;
-	*cap  = __capid_bump_alloc(ci, ct);
+	*cap  = __capid_bump_alloc(ci, ct, pmem);
 	if (!*cap) return -1;
 	return 0;
 }
 
 static thdcap_t
-__cos_thd_alloc(struct cos_compinfo *ci, compcap_t comp, int init_data)
+__cos_thd_alloc(struct cos_compinfo *ci, compcap_t comp, int init_data, int pmem)
 {
 	vaddr_t kmem;
 	capid_t cap;
+	struct cos_meminfo *mi;
 
 	printd("cos_thd_alloc\n");
 
 	assert(ci && comp > 0);
 
-	if (__alloc_mem_cap(ci, CAP_THD, &kmem, &cap)) return 0;
+	if(!pmem) mi = &__compinfo_metacap(ci)->mi;
+	else mi = &__compinfo_metacap(ci)->pmem_mi;
+
+	if (__alloc_mem_cap(ci, CAP_THD, &kmem, &cap, pmem)) return 0;
 	assert(!(init_data & ~((1<<16)-1)));
 	/* TODO: Add cap size checking */
-	if (call_cap_op(ci->captbl_cap, CAPTBL_OP_THDACTIVATE, (init_data << 16) | cap, __compinfo_metacap(ci)->mi.pgtbl_cap, kmem, comp)) BUG();
+	if (call_cap_op(ci->captbl_cap, CAPTBL_OP_THDACTIVATE, (init_data << 16) | cap, mi->pgtbl_cap, kmem, comp)) BUG();
 
 	return cap;
 }
@@ -453,74 +481,100 @@ __cos_thd_alloc(struct cos_compinfo *ci, compcap_t comp, int init_data)
 #include <cos_thd_init.h>
 
 thdcap_t
-cos_thd_alloc(struct cos_compinfo *ci, compcap_t comp, cos_thd_fn_t fn, void *data)
+cos_thd_alloc_ext(struct cos_compinfo *ci, compcap_t comp, cos_thd_fn_t fn, void *data, int pmem)
 {
 	int idx = cos_thd_init_alloc(fn, data);
 	thdcap_t ret;
 
 	if (idx < 1) return 0;
-	ret = __cos_thd_alloc(ci, comp, idx);
+	ret = __cos_thd_alloc(ci, comp, idx, pmem);
 	if (!ret) cos_thd_init_free(idx);
 
 	return ret;
 }
 
 thdcap_t
+cos_thd_alloc(struct cos_compinfo *ci, compcap_t comp, cos_thd_fn_t fn, void *data)
+{ return cos_thd_alloc_ext(ci, comp, fn, data, 0); }
+
+thdcap_t
+cos_initthd_alloc_ext(struct cos_compinfo *ci, compcap_t comp, int pmem)
+{ return __cos_thd_alloc(ci, comp, 1, pmem); }
+
+thdcap_t
 cos_initthd_alloc(struct cos_compinfo *ci, compcap_t comp)
-{ return __cos_thd_alloc(ci, comp, 1); }
+{ return cos_initthd_alloc_ext(ci, comp, 0); }
 
 captblcap_t
-cos_captbl_alloc(struct cos_compinfo *ci)
+cos_captbl_alloc_ext(struct cos_compinfo *ci, int pmem)
 {
 	vaddr_t kmem;
 	capid_t cap;
+	struct cos_meminfo *mi;
 
 	printd("cos_captbl_alloc\n");
 
 	assert(ci);
 
-	if (__alloc_mem_cap(ci, CAP_CAPTBL, &kmem, &cap)) return 0;
-	if (call_cap_op(ci->captbl_cap, CAPTBL_OP_CAPTBLACTIVATE, cap, __compinfo_metacap(ci)->mi.pgtbl_cap, kmem, 0)) BUG();
+	if(!pmem) mi = &__compinfo_metacap(ci)->mi;
+	else mi = &__compinfo_metacap(ci)->pmem_mi;
+	if (__alloc_mem_cap(ci, CAP_CAPTBL, &kmem, &cap, pmem)) return 0;
+	if (call_cap_op(ci->captbl_cap, CAPTBL_OP_CAPTBLACTIVATE, cap, mi->pgtbl_cap, kmem, 0)) BUG();
+
+	return cap;
+}
+
+captblcap_t
+cos_captbl_alloc(struct cos_compinfo *ci)
+{ return cos_captbl_alloc_ext(ci, 0); }
+
+pgtblcap_t
+cos_pgtbl_alloc_ext(struct cos_compinfo *ci, int pmem)
+{
+	vaddr_t kmem;
+	capid_t cap;
+	struct cos_meminfo *mi;
+
+	printd("cos_pgtbl_alloc\n");
+
+	assert(ci);
+
+	if(!pmem) mi = &__compinfo_metacap(ci)->mi;
+	else mi = &__compinfo_metacap(ci)->pmem_mi;
+	if (__alloc_mem_cap(ci, CAP_PGTBL, &kmem, &cap, pmem)) return 0;
+	if (call_cap_op(ci->captbl_cap, CAPTBL_OP_PGTBLACTIVATE, cap, mi->pgtbl_cap, kmem, 0))  BUG();
 
 	return cap;
 }
 
 pgtblcap_t
 cos_pgtbl_alloc(struct cos_compinfo *ci)
-{
-	vaddr_t kmem;
-	capid_t cap;
-
-	printd("cos_pgtbl_alloc\n");
-
-	assert(ci);
-
-	if (__alloc_mem_cap(ci, CAP_PGTBL, &kmem, &cap)) return 0;
-	if (call_cap_op(ci->captbl_cap, CAPTBL_OP_PGTBLACTIVATE, cap, __compinfo_metacap(ci)->mi.pgtbl_cap, kmem, 0))  BUG();
-
-	return cap;
-}
+{ return cos_pgtbl_alloc_ext(ci, 0); }
 
 compcap_t
-cos_comp_alloc(struct cos_compinfo *ci, captblcap_t ctc, pgtblcap_t ptc, vaddr_t entry)
+cos_comp_alloc_ext(struct cos_compinfo *ci, captblcap_t ctc, pgtblcap_t ptc, vaddr_t entry, int pmem)
 {
 	capid_t cap;
-	u32_t   lid = livenessid_bump_alloc();
+	u32_t   lid = livenessid_bump_alloc(pmem);
 
 	printd("cos_comp_alloc\n");
 
 	assert(ci && ctc && ptc && lid);
 
-	cap = __capid_bump_alloc(ci, CAP_COMP);
+	cap = __capid_bump_alloc(ci, CAP_COMP, pmem);
 	if (!cap) return 0;
 	if (call_cap_op(ci->captbl_cap, CAPTBL_OP_COMPACTIVATE, cap, (ctc<<16) | ptc, lid, entry)) BUG();
 
 	return cap;
 }
 
+compcap_t
+cos_comp_alloc(struct cos_compinfo *ci, captblcap_t ctc, pgtblcap_t ptc, vaddr_t entry)
+{ return cos_comp_alloc_ext(ci, ctc, ptc, entry, 0); }
+
 int
-cos_compinfo_alloc(struct cos_compinfo *ci, vaddr_t heap_ptr, capid_t cap_frontier, vaddr_t entry,
-		   struct cos_compinfo *ci_resources)
+cos_compinfo_alloc_ext(struct cos_compinfo *ci, vaddr_t heap_ptr, capid_t cap_frontier, vaddr_t entry,
+		   struct cos_compinfo *ci_resources, int pmem)
 {
 	pgtblcap_t ptc;
 	captblcap_t ctc;
@@ -528,11 +582,11 @@ cos_compinfo_alloc(struct cos_compinfo *ci, vaddr_t heap_ptr, capid_t cap_fronti
 
 	printd("cos_compinfo_alloc\n");
 
-	ptc = cos_pgtbl_alloc(ci_resources);
+	ptc = cos_pgtbl_alloc_ext(ci_resources, pmem);
 	assert(ptc);
-	ctc = cos_captbl_alloc(ci_resources);
+	ctc = cos_captbl_alloc_ext(ci_resources, pmem);
 	assert(ctc);
-	compc = cos_comp_alloc(ci_resources, ctc, ptc, entry);
+	compc = cos_comp_alloc_ext(ci_resources, ctc, ptc, entry, pmem);
 	assert(compc);
 
 	cos_compinfo_init(ci, ptc, ctc, compc, heap_ptr, cap_frontier, ci_resources);
@@ -540,8 +594,13 @@ cos_compinfo_alloc(struct cos_compinfo *ci, vaddr_t heap_ptr, capid_t cap_fronti
 	return 0;
 }
 
+int
+cos_compinfo_alloc(struct cos_compinfo *ci, vaddr_t heap_ptr, capid_t cap_frontier, vaddr_t entry,
+		   struct cos_compinfo *ci_resources)
+{ return cos_compinfo_alloc_ext(ci, heap_ptr, cap_frontier, entry, ci_resources, 0); }
+
 sinvcap_t
-cos_sinv_alloc(struct cos_compinfo *srcci, compcap_t dstcomp, vaddr_t entry)
+cos_sinv_alloc_ext(struct cos_compinfo *srcci, compcap_t dstcomp, vaddr_t entry, int pmem)
 {
 	capid_t cap;
 
@@ -549,12 +608,16 @@ cos_sinv_alloc(struct cos_compinfo *srcci, compcap_t dstcomp, vaddr_t entry)
 
 	assert(srcci && dstcomp);
 
-	cap = __capid_bump_alloc(srcci, CAP_COMP);
+	cap = __capid_bump_alloc(srcci, CAP_COMP, pmem);
 	if (!cap) return 0;
 	if (call_cap_op(srcci->captbl_cap, CAPTBL_OP_SINVACTIVATE, cap, dstcomp, entry, 0)) BUG();
 
 	return cap;
 }
+
+sinvcap_t
+cos_sinv_alloc(struct cos_compinfo *srcci, compcap_t dstcomp, vaddr_t entry)
+{ return cos_sinv_alloc_ext(srcci, dstcomp, entry, 0); }
 
 /*
  * Arguments:
@@ -565,7 +628,7 @@ cos_sinv_alloc(struct cos_compinfo *srcci, compcap_t dstcomp, vaddr_t entry)
  *          when the thread blocks on this endpoint.
  */
 arcvcap_t
-cos_arcv_alloc(struct cos_compinfo *ci, thdcap_t thdcap, tcap_t tcapcap, compcap_t compcap, arcvcap_t arcvcap)
+cos_arcv_alloc_ext(struct cos_compinfo *ci, thdcap_t thdcap, tcap_t tcapcap, compcap_t compcap, arcvcap_t arcvcap, int pmem)
 {
 	capid_t cap;
 
@@ -573,63 +636,83 @@ cos_arcv_alloc(struct cos_compinfo *ci, thdcap_t thdcap, tcap_t tcapcap, compcap
 
 	printd("arcv_alloc: tcap cap %d\n", (int)tcapcap);
 
-	cap = __capid_bump_alloc(ci, CAP_ARCV);
+	cap = __capid_bump_alloc(ci, CAP_ARCV, pmem);
 	if (!cap) return 0;
 	if (call_cap_op(ci->captbl_cap, CAPTBL_OP_ARCVACTIVATE, cap, thdcap | (tcapcap << 16), compcap, arcvcap)) BUG();
 
 	return cap;
 }
 
+arcvcap_t
+cos_arcv_alloc(struct cos_compinfo *ci, thdcap_t thdcap, tcap_t tcapcap, compcap_t compcap, arcvcap_t arcvcap)
+{ return cos_arcv_alloc_ext(ci, thdcap, tcapcap, compcap, arcvcap, 0); }
+
 asndcap_t
-cos_asnd_alloc(struct cos_compinfo *ci, arcvcap_t arcvcap, captblcap_t ctcap)
+cos_asnd_alloc_ext(struct cos_compinfo *ci, arcvcap_t arcvcap, captblcap_t ctcap, int pmem)
 {
 	capid_t cap;
 
 	assert(ci && arcvcap && ctcap);
 
-	cap = __capid_bump_alloc(ci, CAP_ASND);
+	cap = __capid_bump_alloc(ci, CAP_ASND, pmem);
 	if (!cap) return 0;
 	if (call_cap_op(ci->captbl_cap, CAPTBL_OP_ASNDACTIVATE, cap, ctcap, arcvcap, 0))  BUG();
 
 	return cap;
 }
 
+asndcap_t
+cos_asnd_alloc(struct cos_compinfo *ci, arcvcap_t arcvcap, captblcap_t ctcap)
+{ return cos_asnd_alloc_ext(ci, arcvcap, ctcap, 0); }
+
 /*
  * TODO: bitmap must be a subset of existing one.
  *       but there is no such check now, violates access control policy.
  */
 hwcap_t
-cos_hw_alloc(struct cos_compinfo *ci, u32_t bitmap)
+cos_hw_alloc_ext(struct cos_compinfo *ci, u32_t bitmap, int pmem)
 {
 	capid_t cap;
 
 	assert(ci);
 
-	cap = __capid_bump_alloc(ci, CAP_HW);
+	cap = __capid_bump_alloc(ci, CAP_HW, pmem);
 	if (!cap) return 0;
 	if (call_cap_op(ci->captbl_cap, CAPTBL_OP_HW_ACTIVATE, cap, bitmap, 0, 0))  BUG();
 
 	return cap;
 }
 
+hwcap_t
+cos_hw_alloc(struct cos_compinfo *ci, u32_t bitmap)
+{ return cos_hw_alloc_ext(ci, bitmap, 0); }
+
+void *
+cos_page_bump_alloc_ext(struct cos_compinfo *ci, int pmem)
+{ return (void*)__page_bump_alloc(ci, pmem); }
+
 void *
 cos_page_bump_alloc(struct cos_compinfo *ci)
-{ return (void*)__page_bump_alloc(ci); }
+{ return (void*)cos_page_bump_alloc_ext(ci, 0); }
 
 capid_t
-cos_cap_cpy(struct cos_compinfo *dstci, struct cos_compinfo *srcci, cap_t srcctype, capid_t srccap)
+cos_cap_cpy_ext(struct cos_compinfo *dstci, struct cos_compinfo *srcci, cap_t srcctype, capid_t srccap, int pmem)
 {
 	capid_t dstcap;
 
 	assert(srcci && dstci);
 
-	dstcap = __capid_bump_alloc(srcci, srcctype);
+	dstcap = __capid_bump_alloc(dstci, srcctype, pmem);
 	if (!dstcap) return 0;
 
 	if (call_cap_op(srcci->captbl_cap, CAPTBL_OP_CPY, srccap, dstci->captbl_cap, dstcap, 0))  BUG();
 
 	return dstcap;
 }
+
+capid_t
+cos_cap_cpy(struct cos_compinfo *dstci, struct cos_compinfo *srcci, cap_t srcctype, capid_t srccap)
+{ return cos_cap_cpy_ext(dstci, srcci, srcctype, srccap, 0); }
 
 int
 cos_cap_cpy_at(struct cos_compinfo *dstci, capid_t dstcap, struct cos_compinfo *srcci, capid_t srccap)
@@ -643,6 +726,13 @@ cos_cap_cpy_at(struct cos_compinfo *dstci, capid_t dstcap, struct cos_compinfo *
 	return 0;
 }
 
+int
+cos_cap_cpy_captbl_at(capid_t dstci, capid_t dstcap, capid_t srcci, capid_t srccap)
+{
+	if (call_cap_op(srcci, CAPTBL_OP_CPY, srccap, dstci, dstcap, 0))  BUG();
+
+	return 0;
+}
 /**************** [Kernel Object Operations] ****************/
 
 int
@@ -688,19 +778,38 @@ cos_rcv(arcvcap_t rcv)
 }
 
 vaddr_t
-cos_mem_alias(struct cos_compinfo *dstci, struct cos_compinfo *srcci, vaddr_t src)
+cos_mem_alias_pmem(struct cos_compinfo *dstci, struct cos_compinfo *srcci, vaddr_t src, int pmem)
 {
 	vaddr_t dst;
 
 	assert(srcci && dstci);
 
-	dst = __page_bump_valloc(dstci);
+	dst = __page_bump_valloc(dstci, pmem);
+	if (unlikely(!dst)) return 0;
+
+	if (call_cap_op(__compinfo_metacap(srcci)->pmem_mi.pgtbl_cap, CAPTBL_OP_CPY, src, dstci->pgtbl_cap, dst, 0))  BUG();
+
+	return dst;
+}
+
+vaddr_t
+cos_mem_alias_ext(struct cos_compinfo *dstci, struct cos_compinfo *srcci, vaddr_t src, int pmem)
+{
+	vaddr_t dst;
+
+	assert(srcci && dstci);
+
+	dst = __page_bump_valloc(dstci, pmem);
 	if (unlikely(!dst)) return 0;
 
 	if (call_cap_op(srcci->pgtbl_cap, CAPTBL_OP_CPY, src, dstci->pgtbl_cap, dst, 0))  BUG();
 
 	return dst;
 }
+
+vaddr_t
+cos_mem_alias(struct cos_compinfo *dstci, struct cos_compinfo *srcci, vaddr_t src)
+{ return cos_mem_alias_ext(dstci, srcci, src, 0); }
 
 int
 cos_mem_alias_at(struct cos_compinfo *dstci, vaddr_t dst, struct cos_compinfo *srcci, vaddr_t src)
@@ -720,18 +829,24 @@ cos_mem_remove(pgtblcap_t pt, vaddr_t addr)
 }
 
 vaddr_t
-cos_mem_move(struct cos_compinfo *dstci, struct cos_compinfo *srcci, vaddr_t src)
+cos_mem_move_ext(struct cos_compinfo *dstci, struct cos_compinfo *srcci, vaddr_t src, int pmem)
 {
 	vaddr_t dst;
 
 	assert(srcci && dstci);
 
-	dst = __page_bump_valloc(dstci);
+	dst = __page_bump_valloc(dstci, pmem);
 	if (unlikely(!dst)) return 0;
 
 	if (call_cap_op(srcci->pgtbl_cap, CAPTBL_OP_MEMMOVE, src, dstci->pgtbl_cap, dst, 0))  BUG();
 
 	return dst;
+}
+
+vaddr_t
+cos_mem_move(struct cos_compinfo *dstci, struct cos_compinfo *srcci, vaddr_t src)
+{
+	cos_mem_move_ext(dstci, srcci, src, 0);
 }
 
 int
@@ -758,22 +873,30 @@ cos_introspect(struct cos_compinfo *ci, capid_t cap, unsigned long op)
 /***************** [Kernel Tcap Operations] *****************/
 
 tcap_t
-cos_tcap_alloc(struct cos_compinfo *ci, tcap_prio_t prio)
+cos_tcap_alloc_ext(struct cos_compinfo *ci, tcap_prio_t prio, int pmem)
 {
 	vaddr_t kmem;
 	capid_t cap;
 	int prio_hi = (u32_t)(prio >> 32);
 	int prio_lo = (u32_t)((prio << 32) >> 32);
+	struct cos_meminfo *mi;
+
+	if(!pmem) mi = &__compinfo_metacap(ci)->mi;
+	else mi = &__compinfo_metacap(ci)->pmem_mi;
 
 	printd("cos_tcap_alloc\n");
 	assert (ci);
 
-	if (__alloc_mem_cap(ci, CAP_TCAP, &kmem, &cap)) return 0;
+	if (__alloc_mem_cap(ci, CAP_TCAP, &kmem, &cap, pmem)) return 0;
 	/* TODO: Add cap size checking */
-	if (call_cap_op(ci->captbl_cap, CAPTBL_OP_TCAP_ACTIVATE, (cap << 16) | __compinfo_metacap(ci)->mi.pgtbl_cap, kmem, prio_hi, prio_lo)) BUG();
+	if (call_cap_op(ci->captbl_cap, CAPTBL_OP_TCAP_ACTIVATE, (cap << 16) | mi->pgtbl_cap, kmem, prio_hi, prio_lo)) BUG();
 
 	return cap;
 }
+
+tcap_t
+cos_tcap_alloc(struct cos_compinfo *ci, tcap_prio_t prio)
+{ return cos_tcap_alloc_ext(ci, prio, 0); }
 
 int
 cos_tcap_transfer(arcvcap_t dst, tcap_t src, tcap_res_t res, tcap_prio_t prio)
@@ -812,7 +935,7 @@ cos_hw_cycles_per_usec(hwcap_t hwc)
 { return call_cap_op(hwc, CAPTBL_OP_HW_CYC_USEC, 0, 0, 0, 0); }
 
 void *
-cos_hw_map(struct cos_compinfo *ci, hwcap_t hwc, paddr_t pa, unsigned int len)
+cos_hw_map_ext(struct cos_compinfo *ci, hwcap_t hwc, paddr_t pa, unsigned int len, int pmem)
 {
 	size_t sz;
 	vaddr_t fva, va;
@@ -821,7 +944,7 @@ cos_hw_map(struct cos_compinfo *ci, hwcap_t hwc, paddr_t pa, unsigned int len)
 
 	sz   = round_up_to_page(len);
 
-	fva = __page_bump_valloc(ci);
+	fva = __page_bump_valloc(ci, pmem);
 	va  = fva;
 	if (unlikely(!fva)) return NULL;
 
@@ -831,10 +954,14 @@ cos_hw_map(struct cos_compinfo *ci, hwcap_t hwc, paddr_t pa, unsigned int len)
 		sz -= PAGE_SIZE;
 		pa += PAGE_SIZE;
 
-		va = __page_bump_valloc(ci);
+		va = __page_bump_valloc(ci, pmem);
 		if (unlikely(!va)) return NULL;
 
 	} while (sz > 0);
 
 	return (void *)fva;
 }
+
+void *
+cos_hw_map(struct cos_compinfo *ci, hwcap_t hwc, paddr_t pa, unsigned int len)
+{ return cos_hw_map_ext(ci, hwc, pa, len, 0); }
