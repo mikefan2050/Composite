@@ -11,5 +11,5 @@ fi
 
 MODULES=$(sh $1 | awk '/^Writing image/ { print $3; }' | tr '\n' ' ')
 
-qemu-system-i386 -m 128 -device ivshmem,size=128M,shm=ivshmem -nographic -kernel kernel.img -no-reboot -initrd "$(echo $MODULES | tr ' ' ',')"
+qemu-system-i386 --enable-kvm -m 128 -device ivshmem,size=128M,shm=ivshmem -nographic -kernel kernel.img -no-reboot -initrd "$(echo $MODULES | tr ' ' ',')"
 
