@@ -202,7 +202,7 @@ timer_find_hpet(void *timer)
 	unsigned char *hpetaddr = timer;
 	u32_t length = *(u32_t*)(hpetaddr + HPET_TAB_LENGTH);
 
-	printk("Initializing HPET @ %p\n", hpetaddr);
+	/* printk("Initializing HPET @ %p\n", hpetaddr); */
 
 	for (i = 0; i < length; i++) {
 		sum += hpetaddr[i];
@@ -210,10 +210,10 @@ timer_find_hpet(void *timer)
 
 	if (sum == 0) {
 		u64_t addr = *(u64_t*)(hpetaddr + HPET_TAB_ADDRESS);
-		printk("\tChecksum is OK\n");
-		printk("\tAddr: %016llx\n", addr);
+		/* printk("\tChecksum is OK\n"); */
+		/* printk("\tAddr: %016llx\n", addr); */
 		hpet = (void*)((u32_t)(addr & 0xffffffff));
-		printk("\thpet: %p\n", hpet);
+		/* printk("\thpet: %p\n", hpet); */
 		return addr;
 	}
 
@@ -230,7 +230,7 @@ timer_set_hpet_page(u32_t page)
 	hpet_interrupt    = (u64_t*)((unsigned char*)hpet + HPET_INTERRUPT);
 	hpet_timers       = (struct hpet_timer*)((unsigned char*)hpet + HPET_T0_CONFIG);
 
-	printk("\tSet HPET @ %p\n", hpet);
+//	printk("\tSet HPET @ %p\n", hpet);
 }
 
 void

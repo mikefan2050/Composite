@@ -59,7 +59,7 @@ acpi_find_rsdt(void)
 			}
 
 			if (sum == 0) {
-				printk("\tFound good RSDP @ %p\n", sig);
+				/* printk("\tFound good RSDP @ %p\n", sig); */
 				rsdp = (struct rsdp*)sig;
 				break;
 			} else {
@@ -99,7 +99,7 @@ acpi_find_timer(void)
 				continue;
 			}
 
-			printk("\tFound good HPET @ %p\n", e);
+			/* printk("\tFound good HPET @ %p\n", e); */
 			return e;
 		}
 	}

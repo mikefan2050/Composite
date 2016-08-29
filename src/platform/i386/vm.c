@@ -74,7 +74,7 @@ kern_setup_image(void)
 	}
 
 	/* FIXME: Ugly hack to get the physical page with the ACPI RSDT mapped */
-	printk("ACPI initialization\n");
+	/* printk("ACPI initialization\n"); */
 	void *rsdt = acpi_find_rsdt();
 	if (rsdt) {
 		page = round_up_to_pgd_page(rsdt) - (1 << 22);
@@ -93,7 +93,7 @@ kern_setup_image(void)
 
 	/* FIXME: Ugly hack to get the physical page with the PCI IVSHMEM mapped */
 	if (ivshmem_phy_addr) {
-		printk("live tbl %d global reytye %d local %d\n", sizeof(__liveness_tbl), sizeof(glb_retype_tbl), sizeof(retype_tbl)/NUM_CPU);
+		/* printk("live tbl %d global reytye %d local %d\n", sizeof(__liveness_tbl), sizeof(glb_retype_tbl), sizeof(retype_tbl)/NUM_CPU); */
 		page = round_to_pgd_page(ivshmem_phy_addr);
 		assert(page == ivshmem_phy_addr);
 		ivshmem_set_page(j);

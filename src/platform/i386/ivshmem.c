@@ -78,7 +78,7 @@ ivshmem_set_page(u32_t page)
 	ivshmem_addr = page * (1 << 22);
 	meta_page    = (struct ivshmem_meta *)ivshmem_addr;
 	ivshmem_bump = ivshmem_addr+PAGE_SIZE;
-	printk("ivshmem phy %x virtul %x sz %d bump %x\n", ivshmem_phy_addr, ivshmem_addr, ivshmem_sz, ivshmem_bump);
+	/* printk("ivshmem phy %x virtul %x sz %d bump %x\n", ivshmem_phy_addr, ivshmem_addr, ivshmem_sz, ivshmem_bump); */
 }
 
 void
