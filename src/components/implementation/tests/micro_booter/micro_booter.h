@@ -21,6 +21,8 @@
 #define PRINTC     printc
 #define ITER       10000
 #define TEST_NTHDS 5
+#define NUM_LINE (500)
+#define SIZE ((NUM_LINE)*(CACHE_LINE))
 
 extern struct cos_compinfo booter_info;
 extern thdcap_t termthd; 		/* switch to this to shutdown */

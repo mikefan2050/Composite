@@ -6,6 +6,7 @@ struct meta_header {
 };
 struct meta_header *ivshmem_meta;
 int cur_node;
+char flush[NUM_LINE*CACHE_LINE] CACHE_ALIGNED;
 static void
 thd_fn_perf(void *d)
 {
@@ -552,6 +553,36 @@ inv:
 	return ;
 }
 
+static void
+test_clflush_perf(void)
+{
+	unsigned long long s, e, read, modify, invalid;
+	int i, j;
+	char *ptr, c;
+
+	read = modify = invalid = 0;
+	for(i=0; i<ITER; i++) {
+		//read cache line
+		for(j=0; j<SIZE; j++) c = flush[j];
+		rdtscll(s);
+		for(ptr = flush; ptr<&flush[SIZE-1]; ptr += CACHE_LINE) cos_flush_cache(ptr);
+		rdtscll(e);
+		read += (e-s);
+		//modify cache line
+		for(j=0; j<SIZE; j++) flush[j] = '$';
+		rdtscll(s);
+		for(ptr = flush; ptr<&flush[SIZE-1]; ptr += CACHE_LINE) cos_flush_cache(ptr);
+		rdtscll(e);
+		modify += (e-s);
+		//invalid cache line
+		rdtscll(s);
+		for(ptr = flush; ptr<&flush[SIZE-1]; ptr += CACHE_LINE) cos_flush_cache(ptr);
+		rdtscll(e);
+		invalid += (e-s);
+	}
+	printc("tot itertion %d avg flush one line read %llu modify %llu invalid %llu\n", NUM_LINE*ITER, read/(NUM_LINE*ITER), modify/(NUM_LINE*ITER), invalid/(NUM_LINE*ITER));
+}
+
 void
 test_run(void)
 {
@@ -573,6 +604,7 @@ test_run(void)
 
 	test_inv_global();
 	test_inv();
+	test_clflush_perf();
 	test_inv_perf();
 
 	test_captbl_expand();

@@ -46,6 +46,12 @@ cos_inst_bar(void)
 	return;
 }
 
+static inline void
+cos_flush_cache(void *p)
+{
+	__asm__ __volatile__("clflush (%0)" :: "r"(p));
+}
+
 #ifndef rdtscll
 #define rdtscll(val) __asm__ __volatile__("rdtsc" : "=A" (val))
 #endif
