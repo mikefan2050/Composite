@@ -461,6 +461,16 @@ test_inv_perf(void)
 		total_inv_cycles, (long long) (ITER), (total_inv_cycles / (long long)(ITER)));
 	PRINTC("Average SRET (Total: %lld / Iterations: %lld ): %lld\n",
 		total_ret_cycles, (long long) (ITER), (total_ret_cycles / (long long)(ITER)));
+
+	long long tstart_cycles = 0LL, tend_cycles = 0LL;
+	rdtscll(tstart_cycles);
+	for (i = 0 ; i < ITER ; i++) {
+		call_cap_mb(ic, 1, 2, 3);
+	}
+	rdtscll(tend_cycles);
+
+	PRINTC("Average SINV (Total: %lld / Iterations: %lld ): %lld\n",
+		tend_cycles-tstart_cycles, (long long) (ITER), ((tend_cycles-tstart_cycles) / (long long)(ITER)));
 }
 
 void
