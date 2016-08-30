@@ -372,14 +372,11 @@ test_timer(void)
 }
 
 long long midinv_cycles = 0LL;
-int glb_comp_var = 0;
 
 int
 test_serverfn(int a, int b, int c)
 {
 	rdtscll(midinv_cycles);
-	printc("shared var %d\n", glb_comp_var);
-	glb_comp_var += 100;
 	return 0xDEADBEEF;
 }
 
