@@ -20,6 +20,19 @@ ivshmem_boot_alloc(unsigned int size)
 	return r;
 }
 
+void
+clear_bump_alloc(void)
+{
+	unsigned long i = (unsigned long)(round_up_to_pow2(ivshmem_bump, PAGE_SIZE * RETYPE_MEM_NPAGES));
+
+	for(; i < (unsigned long)(ivshmem_addr+IVSHMEM_UNTYPE_START) ; 
+		 i += PAGE_SIZE * RETYPE_MEM_NPAGES) {
+		if (retypetbl_retype2frame((void*)chal_va2pa((void*)i))) {
+				die("Retyping back to frame on ivshmem heap allocation failed @ 0x%x.\n", i);
+		}
+	}
+}
+
 int
 ivshmem_pgtbl_mappings_add(struct captbl *ct, capid_t pgdcap, capid_t ptecap, const char *label,
 			void *kern_vaddr, unsigned long user_vaddr, unsigned int range, int uvm)
@@ -77,7 +90,7 @@ ivshmem_set_page(u32_t page)
 	assert(sizeof(struct ivshmem_meta) <= PAGE_SIZE);
 	ivshmem_addr = page * (1 << 22);
 	meta_page    = (struct ivshmem_meta *)ivshmem_addr;
-	ivshmem_bump = ivshmem_addr+PAGE_SIZE;
+	ivshmem_bump = ivshmem_addr+PAGE_SIZE * RETYPE_MEM_NPAGES;
 	/* printk("ivshmem phy %x virtul %x sz %d bump %x\n", ivshmem_phy_addr, ivshmem_addr, ivshmem_sz, ivshmem_bump); */
 }
 
@@ -85,7 +98,7 @@ void
 ivshmem_boot_init(struct captbl *ct)
 {
 	int j, nkmemptes, ret = 0;
-	unsigned long int i, mem_set;
+	unsigned long int i;
 	pgtbl_t pgtbl;
 	u8_t *captbl;
 	struct captbl *pmem_ct;
@@ -108,8 +121,7 @@ ivshmem_boot_init(struct captbl *ct)
 	ltbl_init(meta_page->pmem_liveness_tbl);
 	__pmem_liveness_tbl = meta_page->pmem_liveness_tbl;
 
-	mem_set = IVSHMEM_TOT_SIZE/RETYPE_MEM_SIZE + 1;
-	meta_page->pmem_glb_retype_tbl = (struct retype_info_glb *)ivshmem_boot_alloc(sizeof(struct retype_info_glb)*mem_set);
+	meta_page->pmem_glb_retype_tbl = (struct retype_info_glb *)ivshmem_boot_alloc(sizeof(struct retype_info_glb)*IVSHMEM_N_MEM_SETS);
 	meta_page->pmem_retype_tbl     = (struct retype_info *)ivshmem_boot_alloc(NUM_NODE*sizeof(struct retype_info));
 
 	for (i = 0; i < NUM_NODE; i++) {
@@ -119,16 +131,17 @@ ivshmem_boot_init(struct captbl *ct)
 			meta_page->pmem_retype_tbl[i].mem_set[j].last_unmap          = 0;
 		}
 	}
-	for (i = 0; i < mem_set; i++) {
+	for (i = 0; i < IVSHMEM_N_MEM_SETS; i++) {
 		meta_page->pmem_glb_retype_tbl[i].type = RETYPETBL_UNTYPED;
 	}
 	pmem_glb_retype_tbl = meta_page->pmem_glb_retype_tbl;
 	pmem_retype_tbl = meta_page->pmem_retype_tbl;
-	for (i = (unsigned long)ivshmem_addr ; i < (unsigned long)(ivshmem_addr+IVSHMEM_UNTYPE_START) ; i += PAGE_SIZE) {
-		if ((unsigned long)i % RETYPE_MEM_NPAGES == 0) {
-			if (retypetbl_retype2user((void*)chal_va2pa((void*)i))) {
-				die("Retyping to kernel on ivshmen boot allocation failed @ 0x%x.\n", i);
-			}
+	retypetbl_retype2user((void*)chal_va2pa((void*)ivshmem_addr));
+	for (i = (unsigned long)ivshmem_addr+PAGE_SIZE * RETYPE_MEM_NPAGES ; 
+		 i < (unsigned long)(ivshmem_addr+IVSHMEM_UNTYPE_START) ; 
+		 i += PAGE_SIZE * RETYPE_MEM_NPAGES) {
+		if (retypetbl_retype2kern((void*)chal_va2pa((void*)i))) {
+				die("Retyping to kernel on ivshmem heap allocation failed @ 0x%x.\n", i);
 		}
 	}
 
@@ -158,6 +171,7 @@ ivshmem_boot_init(struct captbl *ct)
 
 	if (pgtbl_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_PMEM_PT_BASE, meta_page->pmem_pgd[cur_node], 0)) assert(0);
 	if (captbl_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_PMEM_CT_BASE, meta_page->pmem_ct[cur_node], 0)) assert(0);
+	clear_bump_alloc();
 
 	memcpy(meta_page->magic, IVSHMEM_MAGIC, MAGIC_LEN);
 	meta_page->kernel_done = 1;

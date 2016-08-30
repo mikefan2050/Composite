@@ -875,6 +875,7 @@ cos_mem_fence(void)
 #define IVSHMEM_LTBL_ENT_ORDER 20
 #define IVSHMEM_LTBL_TOT_ENTS (1<<IVSHMEM_LTBL_ENT_ORDER)
 #define IVSHMEM_LTBL_NODE_RANGE (IVSHMEM_LTBL_TOT_ENTS/NUM_NODE)
+#define IVSHMEM_N_MEM_SETS (IVSHMEM_TOT_SIZE/RETYPE_MEM_SIZE + 1)
 
 extern paddr_t ivshmem_phy_addr;
 extern vaddr_t ivshmem_addr;
