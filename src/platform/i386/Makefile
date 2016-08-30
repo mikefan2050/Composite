@@ -55,6 +55,7 @@ COS_OBJ += liveness_tbl.o
 COS_OBJ += tcap.o
 COS_OBJ += capinv.o
 COS_OBJ += captbl.o
+COS_OBJ += non_CC.o
 
 DEPS :=$(patsubst %.o, %.d, $(OBJS))
 
@@ -95,6 +96,10 @@ capinv.o: ../../kernel/capinv.c
 	@$(CC) $(CFLAGS) -c $< -o $@
 
 captbl.o: ../../kernel/captbl.c
+	$(info |     [CC]   Compiling $@)
+	@$(CC) $(CFLAGS) -c $< -o $@
+
+non_CC.o: ../../kernel/non_CC.c
 	$(info |     [CC]   Compiling $@)
 	@$(CC) $(CFLAGS) -c $< -o $@
 

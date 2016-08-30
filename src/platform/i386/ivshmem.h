@@ -6,6 +6,7 @@
 #include <pgtbl.h>
 #include <thd.h>
 #include <component.h>
+#include <non_CC.h>
 
 #define IVSHMEM_UNTYPE_START PGD_SIZE*8
 
@@ -17,6 +18,7 @@ struct ivshmem_meta {
 	struct retype_info *pmem_retype_tbl;
 	pgtbl_t pmem_pgd[NUM_NODE];
 	struct captbl *pmem_ct[NUM_NODE];
+	struct non_cc_quiescence *pmem_cc_quiescence;
 };
 extern unsigned long ivshmem_sz;
 extern struct ivshmem_meta *meta_page;
