@@ -416,7 +416,7 @@ cap_move(struct captbl *t, capid_t cap_to, capid_t capin_to,
 		cos_mem_fence();
 		if ((old_v & PGTBL_COSFRAME) == 0) return -EPERM;
 		if (old_v_to & (PGTBL_COSFRAME | PGTBL_PRESENT)) return -EPERM;
-		ret = pgtbl_quie_check(old_v_to);
+		ret = pgtbl_quie_check(old_v_to, PA_IN_IVSHMEM_RANGE((u32_t)((struct cap_pgtbl *)ctfrom)->pgtbl));
 		if (ret) return ret;
 
 		/* valid to move. doing CAS next. */

@@ -235,7 +235,7 @@ int tlb_quiescence_check(u64_t timestamp);
 
 
 static inline int
-pgtbl_quie_check(u32_t orig_v)
+pgtbl_quie_check(u32_t orig_v, int pmem)
 {
 	livenessid_t lid;
 	u64_t ts;
@@ -245,7 +245,7 @@ pgtbl_quie_check(u32_t orig_v)
 		/* An unmap happened at this vaddr before. We need to
 		 * make sure that all cores have done tlb flush before
 		 * creating new mapping. */
-		assert(lid < LTBL_ENTS);
+		lid += (pmem*LTBL_ENTS);
 
 		if (ltbl_get_timestamp(lid, &ts)) return -EFAULT;
 		if (!tlb_quiescence_check(ts))    {
@@ -282,7 +282,7 @@ pgtbl_mapping_add(pgtbl_t pt, u32_t addr, u32_t page, u32_t flags)
 	if (orig_v & PGTBL_COSFRAME) return -EPERM;
 
 	/* Quiescence check */
-	ret = pgtbl_quie_check(orig_v);
+	ret = pgtbl_quie_check(orig_v, PA_IN_IVSHMEM_RANGE((u32_t)pt));
 	if (ret) return ret;
 
 	/* ref cnt on the frame. */
@@ -382,18 +382,19 @@ pgtbl_mapping_mod(pgtbl_t pt, u32_t addr, u32_t flags, u32_t *prevflags)
 static int
 pgtbl_mapping_del(pgtbl_t pt, u32_t addr, u32_t liv_id)
 {
-	int ret;
+	int ret, pmem = (liv_id >= LTBL_ENTS);;
 	struct ert_intern *pte;
 	unsigned long orig_v, accum = 0;
 
 	assert(pt);
 	assert((PGTBL_FLAG_MASK & addr) == 0);
+	if (pmem) assert(PA_IN_IVSHMEM_RANGE((u32_t)pt));
 
 	/* In pgtbl, we have only 20bits for liv id. */
-	if (unlikely(liv_id >= (1 << (32-PGTBL_PAGEIDX_SHIFT)))) return -EINVAL;
+	liv_id -= (pmem*LTBL_ENTS);
 
 	/* Liveness tracking of the unmapping VAS. */
-	ret = ltbl_timestamp_update(liv_id);
+	ret = ltbl_timestamp_update(liv_id+pmem*LTBL_ENTS);
 	if (unlikely(ret)) goto done;
 
 	/* get the pte */
