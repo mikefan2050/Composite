@@ -578,11 +578,12 @@ int pgtbl_deactivate(struct captbl *t, struct cap_captbl *dest_ct_cap, unsigned 
 		     livenessid_t lid, capid_t pgtbl_cap, capid_t cosframe_addr, const int root);
 
 static int
-pgtbl_mapping_scan(struct cap_pgtbl *pt)
+pgtbl_mapping_scan(struct cap_pgtbl *pt, u64_t *max)
 {
 	unsigned int i, pte, *page;
 	livenessid_t lid;
-	u64_t past_ts;
+	u64_t past_ts, max_past_ts = 0;
+	int pmem = PA_IN_IVSHMEM_RANGE(pt);
 
 	/* This scans the leaf level of the pgtbl and verifies
 	 * quiescence. */
@@ -599,10 +600,11 @@ pgtbl_mapping_scan(struct cap_pgtbl *pt)
 			lid = pte >> PGTBL_PAGEIDX_SHIFT;
 
 			if (ltbl_get_timestamp(lid, &past_ts, pmem)) return -EFAULT;
-			if (!tlb_quiescence_check(past_ts)) return -EQUIESCENCE;
+			if (past_ts > max_past_ts) max_past_ts = past_ts;
 		}
 	}
 
+	*max = max_past_ts;
 	return 0;
 }
 

@@ -165,10 +165,11 @@ err:
 }
 
 static int
-captbl_leaflvl_scan(struct captbl *ct)
+captbl_leaflvl_scan(struct captbl *ct, u64_t *max)
 {
 	unsigned int i, ret;
-	u64_t curr_ts, past_ts;
+	u64_t curr_ts, past_ts, max_past_ts = 0;
+	int pmem = VA_IN_IVSHMEM_RANGE(ct);
 
 	/* going through each cacheline. */
 	for (i = 0; i < ((1<<CAPTBL_LEAF_ORD) * CAPTBL_LEAFSZ) / CACHELINE_SIZE; i++) {
@@ -191,33 +192,37 @@ captbl_leaflvl_scan(struct captbl *ct)
 
 			/* non_zero liv_id means deactivation happened. */
 			if (header_i->type == CAP_QUIESCENCE && header_i->liveness_id) {
-				if (ltbl_get_timestamp(header_i->liveness_id, &past_ts)) cos_throw(err, -EFAULT);
-				if (!QUIESCENCE_CHECK(curr_ts, past_ts, KERN_QUIESCENCE_CYCLES)) cos_throw(err, -EQUIESCENCE);
+				if (ltbl_get_timestamp(header_i->liveness_id, &past_ts, pmem)) cos_throw(err, -EFAULT);
+				if (past_ts > max_past_ts) max_past_ts = past_ts;
 			}
 
 			header_i = (void *)header_i + ent_size; /* get next header */
 		}
 	}
 
+	*max = max_past_ts;
 	return 0;
 err:
 	return ret;
 }
 
 int
-captbl_kmem_scan(struct cap_captbl *cap)
+captbl_kmem_scan(struct cap_captbl *cap, u64_t *max)
 {
 	/* This scans the leaf level of the captbl. We need to go
 	 * through all cap entries and verify quiescence. */
 	int ret;
+	u64_t m = 0;
 	struct captbl *ct = cap->captbl;
 	assert (cap->lvl == CAPTBL_DEPTH - 1);
 
 	/* each level of captbl is half page. */
-	ret = captbl_leaflvl_scan(ct);
+	ret = captbl_leaflvl_scan(ct, max);
 	if (ret) return ret;
-	ret = captbl_leaflvl_scan((struct captbl *)((char *)ct + PAGE_SIZE / 2));
+	ret = captbl_leaflvl_scan((struct captbl *)((char *)ct + PAGE_SIZE / 2), &m);
 	if (ret) return ret;
 
+	if (m > *max) *max = m;
 	return 0;
 }
+

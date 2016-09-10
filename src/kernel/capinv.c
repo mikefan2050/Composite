@@ -200,7 +200,10 @@ kmem_deact_pre(struct cap_header *ch, struct captbl *ct, capid_t pgtbl_cap,
 		if (deact_cap->lvl < CAPTBL_DEPTH - 1) {
 			ret = kmem_page_scan(page, PAGE_SIZE);
 		} else {
-			ret = captbl_kmem_scan(deact_cap);
+			ret = captbl_kmem_scan(deact_cap, &max);
+			if (!ret) {
+				if (!cos_quiescence_check(curr, max, KERN_QUIESCENCE_CYCLES, KERNEL_QUIESCENCE)) return -EQUIESCENCE;
+			}
 		}
 
 		if (ret) {
@@ -253,7 +256,10 @@ kmem_deact_pre(struct cap_header *ch, struct captbl *ct, capid_t pgtbl_cap,
 			ret = kmem_page_scan(page, PAGE_SIZE - KERNEL_PGD_REGION_SIZE);
 		} else if (deact_cap->lvl == PGTBL_DEPTH - 1) {
 			/* Leaf level, scan mapping. */
-			ret = pgtbl_mapping_scan(deact_cap);
+			ret = pgtbl_mapping_scan(deact_cap, &max);
+			if (!ret) {
+				if (!cos_quiescence_check(0, max, 0, TLB_QUIESCENCE)) return -EQUIESCENCE;
+			}
 		} else {
 			/* don't have this with 2-level pgtbl. */
 			ret = kmem_page_scan(page, PAGE_SIZE);
