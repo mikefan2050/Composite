@@ -38,13 +38,22 @@ pgtbl_kmem_act(pgtbl_t pt, u32_t addr, unsigned long *kern_addr, unsigned long *
 	if (unlikely(!*kern_addr)) return -EINVAL; /* cannot retype a non-kernel accessible page */
 	if (unlikely(retypetbl_kern_ref((void *)(new_v & PGTBL_FRAME_MASK)))) return -EFAULT;
 
+	if (pmem_mem) {
+		if (unlikely(retypetbl_non_cc_kern_ref((void *)(new_v & PGTBL_FRAME_MASK)))) return -EFAULT;
+	} else {
+		if (unlikely(retypetbl_kern_ref((void *)(new_v & PGTBL_FRAME_MASK)))) return -EFAULT;
+	}
 	/* We keep the cos_frame entry, but mark it as COSKMEM so that
 	 * we won't use it for other kernel objects. */
 	if (pmem_cap) ret = cos_non_cc_cas((unsigned long *)pte, orig_v, new_v);
 	else ret = cos_cas((unsigned long *)pte, orig_v, new_v);
 	if (unlikely(ret != CAS_SUCCESS)) {
 		/* restore the ref cnt. */
-		retypetbl_deref((void *)(orig_v & PGTBL_FRAME_MASK));
+		if (pmem_mem) {
+			retypetbl_non_cc_deref((void *)(orig_v & PGTBL_FRAME_MASK));
+		} else {
+			retypetbl_deref((void *)(orig_v & PGTBL_FRAME_MASK));
+		}
 		return -ECASFAIL;
 	}
 	/* Return the pte ptr, so that we can release the page if the

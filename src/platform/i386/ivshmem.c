@@ -109,7 +109,6 @@ ivshmem_boot_init(struct captbl *ct)
 		if (pgtbl_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_PMEM_PT_BASE, meta_page->pmem_pgd[cur_node], 0)) assert(0);
 		if (captbl_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_PMEM_CT_BASE, meta_page->pmem_ct[cur_node], 0)) assert(0);
 		__pmem_liveness_tbl = meta_page->pmem_liveness_tbl;
-		pmem_glb_retype_tbl = meta_page->pmem_glb_retype_tbl;
 		pmem_retype_tbl = meta_page->pmem_retype_tbl;
 		cc_quiescence = meta_page->pmem_cc_quiescence;
 		global_tsc = &meta_page->global_tsc;
@@ -123,20 +122,13 @@ ivshmem_boot_init(struct captbl *ct)
 	ltbl_init(meta_page->pmem_liveness_tbl);
 	__pmem_liveness_tbl = meta_page->pmem_liveness_tbl;
 
-	meta_page->pmem_glb_retype_tbl = (struct retype_info_glb *)ivshmem_boot_alloc(sizeof(struct retype_info_glb)*IVSHMEM_N_MEM_SETS);
-	meta_page->pmem_retype_tbl     = (struct retype_info *)ivshmem_boot_alloc(NUM_NODE*sizeof(struct retype_info));
+	meta_page->pmem_retype_tbl = (struct retype_info *)ivshmem_boot_alloc(sizeof(struct retype_info));
 
-	for (i = 0; i < NUM_NODE; i++) {
-		for (j = 0; j < N_MEM_SETS; j++) {
-			meta_page->pmem_retype_tbl[i].mem_set[j].refcnt_atom.type    = RETYPETBL_UNTYPED;
-			meta_page->pmem_retype_tbl[i].mem_set[j].refcnt_atom.ref_cnt = 0;
-			meta_page->pmem_retype_tbl[i].mem_set[j].last_unmap          = 0;
-		}
+	for (j = 0; j < N_MEM_SETS; j++) {
+		meta_page->pmem_retype_tbl->mem_set[j].refcnt_atom.type    = RETYPETBL_UNTYPED;
+		meta_page->pmem_retype_tbl->mem_set[j].refcnt_atom.ref_cnt = 0;
+		meta_page->pmem_retype_tbl->mem_set[j].last_unmap          = 0;
 	}
-	for (i = 0; i < IVSHMEM_N_MEM_SETS; i++) {
-		meta_page->pmem_glb_retype_tbl[i].type = RETYPETBL_UNTYPED;
-	}
-	pmem_glb_retype_tbl = meta_page->pmem_glb_retype_tbl;
 	pmem_retype_tbl = meta_page->pmem_retype_tbl;
 	retypetbl_retype2user((void*)chal_va2pa((void*)ivshmem_addr));
 	for (i = (unsigned long)ivshmem_addr+PAGE_SIZE * RETYPE_MEM_NPAGES ; 
