@@ -57,6 +57,7 @@ kern_setup_image(void)
 	unsigned long i, j;
 	paddr_t kern_pa_start, kern_pa_end;
 	u32_t page;
+	unsigned long *pte;
 
 	printk("\tSetting up initial page directory.\n");
 	kern_pa_start = round_to_pgd_page(chal_va2pa(mem_kern_start())); /* likely 0 */
@@ -97,8 +98,12 @@ kern_setup_image(void)
 		page = round_to_pgd_page(ivshmem_phy_addr);
 		assert(page == ivshmem_phy_addr);
 		ivshmem_set_page(j);
-		for(; page<ivshmem_phy_addr+ivshmem_sz; page += PGD_RANGE, j++) {
-			boot_comp_pgd[j] = page | PGTBL_PRESENT | PGTBL_WRITABLE | PGTBL_SUPER | PGTBL_GLOBAL;
+		for(; page<ivshmem_phy_addr+ivshmem_sz; j++) {
+			pte = (unsigned long *)mem_boot_alloc(1);  /* alloc pte page */
+			boot_comp_pgd[j] = chal_va2pa(pte) | PGTBL_PRESENT | PGTBL_WRITABLE | PGTBL_GLOBAL;
+			for(i=0; i<PAGE_SIZE/sizeof(unsigned long); page += PAGE_SIZE, i++) {
+				pte[i] = page | PGTBL_PRESENT | PGTBL_WRITABLE | PGTBL_GLOBAL;
+			}
 		}
 	}
 

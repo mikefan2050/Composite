@@ -18,7 +18,7 @@ struct ivshmem_meta {
 	struct retype_info *pmem_retype_tbl;
 	pgtbl_t pmem_pgd[NUM_NODE];
 	struct captbl *pmem_ct[NUM_NODE];
-	struct non_cc_quiescence *pmem_cc_quiescence;
+	struct non_cc_quiescence pmem_cc_quiescence[NUM_NODE];
 };
 extern unsigned long ivshmem_sz;
 extern struct ivshmem_meta *meta_page;

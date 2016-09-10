@@ -773,6 +773,10 @@ composite_syscall_handler(struct pt_regs *regs)
 		return 0;
 	}
 
+	/* FIXME: use a cap for cache flush */
+	if (unlikely(cap == CCFLUSH_CAP_TEMP)) {
+		return cos_cache_mandatory_flush();
+	}
 	ci = thd_invstk_current(thd, &ip, &sp, cos_info);
 	assert(ci && ci->captbl);
 

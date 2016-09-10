@@ -36,6 +36,7 @@ typedef unsigned long tcap_res_t;
 typedef u64_t tcap_prio_t;
 typedef u64_t tcap_uid_t;
 #define PRINT_CAP_TEMP (1 << 14)
+#define CCFLUSH_CAP_TEMP (PRINT_CAP_TEMP+1)
 
 typedef enum {
 	TCAP_DELEG_TRANSFER = 1,

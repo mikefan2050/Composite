@@ -3,25 +3,29 @@
 
 #include "shared/util.h"
 #include "shared/cos_types.h"
+#include "assert.h"
 
 #define NUM_CLFLUSH_ITEM 100
 #define GET_QUIESCE_IDX(va) (((u32_t)(va) - ivshmem_addr) / RETYPE_MEM_SIZE) 
 
-struct non_cc_quiescence {
-	u64_t last_mandatory_flush[NUM_NODE];
-} __attribute__((aligned(CACHE_LINE), packed)) ;
+typedef enum {
+	TLB_QUIESCENCE,
+	KERNEL_QUIESCENCE,
+	NON_CC_QUIESCENCE
+} quiescence_type_t;
 
-struct clflush_item {
-	void *start, *end;
-};
+struct non_cc_quiescence {
+	u64_t last_mandatory_flush;
+	u8_t __padding[CACHE_LINE - sizeof(u64_t)];
+} __attribute__((aligned(CACHE_LINE), packed)) ;
 
 extern struct non_cc_quiescence *cc_quiescence;
 extern u64_t *global_tsc;
 
-void clflush_buffer_add(void *s, void *e);
-void clflush_buffer_flush(void);
-void clflush_buffer_clean(void);
-int non_cc_quiescence_check(void *addr, u64_t timestamp);
+int cos_quiescence_check(u64_t cur, u64_t past, u64_t grace_period, quiescence_type_t type);
+int cos_cache_mandatory_flush(void);
+void non_cc_init(void);
+
 static inline void
 non_cc_rdtscll(u64_t *t)
 {

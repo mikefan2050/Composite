@@ -1,52 +1,99 @@
-#include "non_CC.h"
-#include "assert.h"
+#include "include/non_CC.h"
+#include "include/pgtbl.h"
 
+#define TOT_PTE_NUM (PAGE_SIZE/sizeof(unsigned long))
+#define CC_PTE_NUM  (TOT_PTE_NUM/2)
 struct non_cc_quiescence *cc_quiescence;
-struct clflush_item clflush_buffer[NUM_CLFLUSH_ITEM];
-int clflush_buffer_cnt = 0;
+u64_t local_quiescence[NUM_NODE];
+u64_t *global_tsc, clflush_start;
+extern int ivshmem_pgd_idx, ivshmem_pgd_end;
+extern u32_t *boot_comp_pgd;
+int cur_pgd_idx, cur_pte_idx;
 
-static inline void
-clflush_range(void *s, void *e)
+static inline int
+__cc_quiescence_local_check(u64_t timestamp)
 {
-	s = (void *)round_to_cacheline(s);
-	e = (void *)round_to_cacheline(e);
-	for(; s<=e; s += CACHE_LINE) cos_flush_cache(s);
-}
-
-void
-clflush_buffer_flush(void)
-{
-	struct clflush_item *buf = clflush_buffer;
-	int i;
-
-	for(i=0; i<clflush_buffer_cnt; i++, buf++) clflush_range(buf->start, buf->end);
-}
-
-void
-clflush_buffer_add(void *s, void *e)
-{
-	assert(clflush_buffer_cnt < NUM_CLFLUSH_ITEM);
-	clflush_buffer[clflush_buffer_cnt].start = s;
-	clflush_buffer[clflush_buffer_cnt].end   = e;
-	clflush_buffer_cnt++;
-}
-
-void clflush_buffer_clean(void) { clflush_buffer_cnt = 0; }
-
-int
-non_cc_quiescence_check(void *addr, u64_t timestamp)
-{
-	u32_t idx, i, quiescent = 1;
-	struct non_cc_quiescence *ccq;
-
-	idx = GET_QUIESCE_IDX(addr);
-	ccq = &cc_quiescence[idx];
-	clflush_range(ccq, ccq+1);
+	int i, quiescent = 1;
 	for (i = 0; i < NUM_NODE; i++) {
-		if (timestamp > ccq->last_mandatory_flush[i]) {
+		if (timestamp > local_quiescence[i]) {
 			quiescent = 0;
 			break;
 		}
 	}
 	return quiescent;
+}
+
+static inline void
+copy_cc_quiescence(void)
+{
+	int i;
+
+	for(i=0; i<NUM_NODE; i++) cos_flush_cache(&cc_quiescence[i].last_mandatory_flush);
+	for(i=0; i<NUM_NODE; i++) local_quiescence[i] = cc_quiescence[i].last_mandatory_flush;
+}
+
+static int
+non_cc_quiescence_check(u64_t timestamp)
+{
+	if (!__cc_quiescence_local_check(timestamp)) {
+		copy_cc_quiescence();
+	}
+	return __cc_quiescence_local_check(timestamp);
+}
+
+int
+cos_quiescence_check(u64_t cur, u64_t past, u64_t grace_period, quiescence_type_t type)
+{
+	switch(type) {
+	case TLB_QUIESCENCE:
+		return tlb_quiescence_check(past);
+	case KERNEL_QUIESCENCE:
+		return QUIESCENCE_CHECK(cur, past, grace_period);
+	case NON_CC_QUIESCENCE:
+		return non_cc_quiescence_check(past);
+	}
+	return 0;
+}
+
+int
+cos_cache_mandatory_flush(void)
+{
+	unsigned long *pte, page;
+	void *addr;
+	int i, end = cur_pte_idx+CC_PTE_NUM, ret = 1;
+
+	if (cur_pgd_idx == ivshmem_pgd_idx && !cur_pte_idx) {
+		non_cc_rdtscll(&clflush_start);
+	}
+	pte = chal_pa2va(boot_comp_pgd[cur_pgd_idx] & PGTBL_FRAME_MASK);
+	for(i=cur_pte_idx; i < (int)TOT_PTE_NUM && i < end; i++) {
+		page = pte[i];
+		if (page & PGTBL_ACCESSED) {
+			addr = chal_pa2va(page & PGTBL_FRAME_MASK);
+			cos_clflush_range(addr, addr+PAGE_SIZE);
+			pte[i] &= (~PGTBL_ACCESSED);
+		}
+	}
+	if (i == TOT_PTE_NUM) {
+		cur_pte_idx = 0;
+		cur_pgd_idx++;
+		if (cur_pgd_idx == ivshmem_pgd_end) {
+			cur_pgd_idx = ivshmem_pgd_idx;
+		}
+	} else {
+		cur_pte_idx = i;
+	}
+	if (cur_pgd_idx == ivshmem_pgd_idx && !cur_pte_idx) {
+		cc_quiescence[cur_node].last_mandatory_flush = clflush_start;
+		cos_wb_cache(&cc_quiescence[cur_node].last_mandatory_flush);
+		ret = 0;
+	}
+	return ret;
+}
+
+void
+non_cc_init(void)
+{
+	cur_pgd_idx = ivshmem_pgd_idx;
+	cur_pte_idx = 0;
 }

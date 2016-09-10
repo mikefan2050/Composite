@@ -6,7 +6,7 @@ paddr_t ivshmem_phy_addr;
 size_t ivshmem_sz;
 vaddr_t ivshmem_addr=0, ivshmem_bump;
 struct ivshmem_meta *meta_page;
-int cur_node;
+int cur_node, ivshmem_pgd_idx, ivshmem_pgd_end;
 extern u8_t *boot_comp_pgd;
 extern int boot_nptes(unsigned int sz);
 
@@ -88,6 +88,8 @@ void
 ivshmem_set_page(u32_t page)
 {
 	assert(sizeof(struct ivshmem_meta) <= PAGE_SIZE);
+	ivshmem_pgd_idx = (int)page;
+	ivshmem_pgd_end = page+ivshmem_sz/PGD_RANGE;
 	ivshmem_addr = page * (1 << 22);
 	meta_page    = (struct ivshmem_meta *)ivshmem_addr;
 	ivshmem_bump = ivshmem_addr+PAGE_SIZE * RETYPE_MEM_NPAGES;
@@ -103,6 +105,7 @@ ivshmem_boot_init(struct captbl *ct)
 	u8_t *captbl;
 	struct captbl *pmem_ct;
 
+	non_cc_init();
 	if (meta_page->node_num >= NUM_NODE) meta_page->kernel_done = 0;
 	if (meta_page->kernel_done) {
 		cur_node = meta_page->node_num++;
@@ -139,9 +142,8 @@ ivshmem_boot_init(struct captbl *ct)
 		}
 	}
 
-	meta_page->pmem_cc_quiescence = (struct non_cc_quiescence *)ivshmem_boot_alloc(IVSHMEM_N_MEM_SETS*sizeof(struct non_cc_quiescence));
 	cc_quiescence = meta_page->pmem_cc_quiescence;
-	memset(cc_quiescence, 0, IVSHMEM_N_MEM_SETS*sizeof(struct non_cc_quiescence));
+	memset(cc_quiescence, 0, sizeof(struct non_cc_quiescence));
 
 	global_tsc = &meta_page->global_tsc;
 
