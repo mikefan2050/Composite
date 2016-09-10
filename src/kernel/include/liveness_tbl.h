@@ -61,7 +61,11 @@ static int __ltbl_setleaf(struct ert_intern *a, void *data)
 	new = old + 1;
 
 	/*FIXME: 64-bit op*/
-	if (!cos_cas((unsigned long *)ptr, (unsigned long)old, (unsigned long)new)) return -ECASFAIL;
+	if (VA_IN_IVSHMEM_RANGE(ptr)) {
+		if (!cos_non_cc_cas((unsigned long *)ptr, (unsigned long)old, (unsigned long)new)) return -ECASFAIL;
+	} else {
+		if (!cos_cas((unsigned long *)ptr, (unsigned long)old, (unsigned long)new)) return -ECASFAIL;
+	}
 
 	return 0;
 }
@@ -99,12 +103,17 @@ ltbl_expire(struct liveness_data *ld)
 	ent = __ltbl_lkupan(LTBL_REF(pmem), ld->id-pmem*LTBL_ENTS, __ltbl_maxdepth(), NULL);
 	old_v = ent->epoch;
 
-	rdtscll(ent->deact_timestamp);
+	if (pmem) non_cc_rdtscll(&ent->deact_timestamp);
+	else rdtscll(ent->deact_timestamp);
 	cos_mem_fence();
 //	cos_inst_bar();
 
 	//FIXME: 64-bit op
-	if (!cos_cas((unsigned long *)&ent->epoch, (unsigned long)old_v, (unsigned long)(old_v + 1))) return -ECASFAIL;
+	if (pmem) {
+		if (!cos_non_cc_cas((unsigned long *)&ent->epoch, (unsigned long)old_v, (unsigned long)(old_v + 1))) return -ECASFAIL;
+	} else {
+		if (!cos_cas((unsigned long *)&ent->epoch, (unsigned long)old_v, (unsigned long)(old_v + 1))) return -ECASFAIL;
+	}
 
 	return 0;
 }
@@ -121,7 +130,8 @@ ltbl_isfreeable(struct liveness_data *ld, u64_t quiescence_period)
 	int pmem = (ld->id >= LTBL_ENTS);
 
 	ent = __ltbl_lkupan(LTBL_REF(pmem), ld->id-pmem*LTBL_ENTS, __ltbl_maxdepth(), NULL);
-	rdtscll(ts);
+	if (pmem) non_cc_rdtscll(&ts);
+	else rdtscll(ts);
 
 	if (ent->deact_timestamp + quiescence_period < ts) return 1;
 

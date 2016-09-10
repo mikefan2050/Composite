@@ -180,10 +180,28 @@ static inline CFORCEINLINE struct ert_intern *
 __captbl_get(struct ert_intern *a, void *accum, int leaf)
 { (void)accum; (void)leaf; return a->next; }
 
+static int
+__captbl_set(struct ert_intern *a, void *v, void *accum, int isleaf)
+{
+	u32_t old, new;
+	(void)accum; assert(!isleaf);
+
+	old = (u32_t)a->next;
+	new = (u32_t)v;
+
+	if (VA_IN_IVSHMEM_RANGE(&a->next)) {
+		if (!cos_non_cc_cas((unsigned long *)&a->next, old, new)) return -ECASFAIL;
+	} else {
+		if (!cos_cas((unsigned long *)&a->next, old, new)) return -ECASFAIL;
+	}
+
+	return 0;
+}
+
 #define CT_DEFINITVAL NULL
 ERT_CREATE(__captbl, captbl, CAPTBL_DEPTH, CAPTBL_INTERN_ORD, CAPTBL_INTERNSZ,
 	   CAPTBL_LEAF_ORD, CAPTBL_LEAFSZ, CT_DEFINITVAL, __captbl_init, __captbl_get,
-	   ert_defisnull, ert_defset, __captbl_allocfn, __captbl_setleaf,
+	   ert_defisnull, __captbl_set, __captbl_allocfn, __captbl_setleaf,
 	   __captbl_getleaf, ert_defresolve);
 
 static struct captbl *captbl_alloc(void *page) { return __captbl_alloc(&page); }
@@ -222,7 +240,11 @@ captbl_lkup(struct captbl *t, capid_t cap)
 static inline int
 __captbl_store(unsigned long *addr, unsigned long new, unsigned long old)
 {
-	if (!cos_cas(addr, old, new)) return -1;
+	if (VA_IN_IVSHMEM_RANGE(addr)) {
+		if (!cos_non_cc_cas(addr, old, new)) return -1;
+	} else {
+		if (!cos_cas(addr, old, new)) return -1;
+	}
 
 	return 0;
 }
@@ -273,7 +295,8 @@ captbl_add(struct captbl *t, capid_t cap, cap_t type, int *retval)
 		assert(l.size);
 		ent_size = 1<<(l.size+CAP_SZ_OFF);
 
-		rdtscll(curr_ts);
+		if (pmem) non_cc_rdtscll(&curr_ts);
+		else rdtscll(curr_ts);
 		header_i = h;
 		n_ent = CACHELINE_SIZE / ent_size;
 		for (i = 0; i < n_ent; i++) {
@@ -295,7 +318,8 @@ captbl_add(struct captbl *t, capid_t cap, cap_t type, int *retval)
 		if (p->liveness_id && p->type == CAP_QUIESCENCE) {
 			/* means a deactivation on this cap entry happened
 			 * before. */
-			rdtscll(curr_ts);
+			if (pmem) non_cc_rdtscll(&curr_ts);
+			else rdtscll(curr_ts);
 			if (!QUIESCENCE_CHECK(curr_ts, past_ts, KERN_QUIESCENCE_CYCLES)) cos_throw(err, -EQUIESCENCE);
 			if (ltbl_get_timestamp(p->liveness_id, &past_ts, pmem)) cos_throw(err, -EFAULT);
 		}

@@ -134,15 +134,18 @@ cap_cons(struct captbl *t, capid_t capto, capid_t capsub, capid_t expandid)
 		if ((refcnt_flags & CAP_REFCNT_MAX) == CAP_REFCNT_MAX) return -EOVERFLOW;
 
 		refcnt_flags++;
-		ret = cos_cas((unsigned long *)&(((struct cap_pgtbl *)ctsub)->refcnt_flags), old_v, refcnt_flags);
+		if(pmem_cap) ret = cos_non_cc_cas((unsigned long *)&(((struct cap_pgtbl *)ctsub)->refcnt_flags), old_v, refcnt_flags);
+		else ret = cos_cas((unsigned long *)&(((struct cap_pgtbl *)ctsub)->refcnt_flags), old_v, refcnt_flags);
 		if (ret != CAS_SUCCESS) return -ECASFAIL;
 
 		new_pte = (u32_t)chal_va2pa((void *)((unsigned long)(((struct cap_pgtbl *)ctsub)->pgtbl) & PGTBL_FRAME_MASK)) | PGTBL_INTERN_DEF;
 
-		ret = cos_cas(intern, old_pte, new_pte);
+		if (pmem_pg) ret = cos_non_cc_cas(intern, old_pte, new_pte);
+		else ret = cos_cas(intern, old_pte, new_pte);
 		if (ret != CAS_SUCCESS) {
 			/* decrement to restore the refcnt on failure. */
-			cos_faa((int *)&(((struct cap_pgtbl *)ctsub)->refcnt_flags), -1);
+			if(pmem_cap) cos_non_cc_faa((int *)&(((struct cap_pgtbl *)ctsub)->refcnt_flags), -1);
+			else cos_faa((int *)&(((struct cap_pgtbl *)ctsub)->refcnt_flags), -1);
 			return -ECASFAIL;
 		} else {
 			ret = 0;
@@ -242,16 +245,20 @@ cap_kmem_freeze(struct captbl *t, capid_t target_cap)
 
 		if ((l & CAP_REFCNT_MAX) > 1 || l & CAP_MEM_FROZEN_FLAG) return -EINVAL;
 
-		rdtscll(ct->frozen_ts);
-		ret = cos_cas((unsigned long *)&ct->refcnt_flags, l, l | CAP_MEM_FROZEN_FLAG);
+		if (pmem_mem) non_cc_rdtscll(&ct->frozen_ts);
+		else rdtscll(ct->frozen_ts);
+		if (pmem_cap) ret = cos_non_cc_cas((unsigned long *)&ct->refcnt_flags, l, l | CAP_MEM_FROZEN_FLAG);
+		else ret = cos_cas((unsigned long *)&ct->refcnt_flags, l, l | CAP_MEM_FROZEN_FLAG);
 		if (ret != CAS_SUCCESS) return -ECASFAIL;
 	} else if (ch->type == CAP_PGTBL) {
 		struct cap_pgtbl *pt = (struct cap_pgtbl *)ch;
 		l = pt->refcnt_flags;
 		if ((l & CAP_REFCNT_MAX) > 1 || l & CAP_MEM_FROZEN_FLAG) return -EINVAL;
 
-		rdtscll(pt->frozen_ts);
-		ret = cos_cas((unsigned long *)&pt->refcnt_flags, l, l | CAP_MEM_FROZEN_FLAG);
+		if (pmem_mem) non_cc_rdtscll(&pt->frozen_ts);
+		else rdtscll(pt->frozen_ts);
+		if (pmem_cap) ret = cos_non_cc_cas((unsigned long *)&pt->refcnt_flags, l, l | CAP_MEM_FROZEN_FLAG);
+		else ret = cos_cas((unsigned long *)&pt->refcnt_flags, l, l | CAP_MEM_FROZEN_FLAG);
 		if (ret != CAS_SUCCESS) return -ECASFAIL;
 	} else {
 		return -EINVAL;

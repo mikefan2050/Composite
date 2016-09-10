@@ -49,11 +49,17 @@ comp_activate(struct captbl *t, capid_t cap, capid_t capin, capid_t captbl_cap, 
 	}
 	v = ptc->refcnt_flags;
 	if (v & CAP_MEM_FROZEN_FLAG) return -EINVAL;
-	if (cos_cas((unsigned long *)&ptc->refcnt_flags, v, v + 1) != CAS_SUCCESS) return -ECASFAIL;
+	if (pmem_cap) {
+		if (cos_non_cc_cas((unsigned long *)&ptc->refcnt_flags, v, v + 1) != CAS_SUCCESS) return -ECASFAIL;
+	} else {
+		if (cos_cas((unsigned long *)&ptc->refcnt_flags, v, v + 1) != CAS_SUCCESS) return -ECASFAIL;
+	}
 
 	v = ctc->refcnt_flags;
 	if (v & CAP_MEM_FROZEN_FLAG) cos_throw(undo_ptc, -EINVAL);
-	if (cos_cas((unsigned long *)&ctc->refcnt_flags, v, v + 1) != CAS_SUCCESS) {
+	if (pmem_cap) ret = cos_non_cc_cas((unsigned long *)&ctc->refcnt_flags, v, v + 1);
+	else ret = cos_cas((unsigned long *)&ctc->refcnt_flags, v, v + 1);
+	if (unlikely(ret != CAS_SUCCESS)) {
 		/* undo before return */
 		cos_throw(undo_ptc, -ECASFAIL);
 	}
@@ -73,9 +79,11 @@ comp_activate(struct captbl *t, capid_t cap, capid_t capin, capid_t captbl_cap, 
 	return 0;
 
 undo_ctc:
-	cos_faa((int *)&ctc->refcnt_flags, -1);
+	if (pmem_cap) cos_non_cc_faa((int *)&ctc->refcnt_flags, -1);
+	else cos_faa((int *)&ctc->refcnt_flags, -1);
 undo_ptc:
-	cos_faa((int *)&ptc->refcnt_flags, -1);
+	if (pmem_cap) cos_faa((int *)&ptc->refcnt_flags, -1);
+	else cos_faa((int *)&ptc->refcnt_flags, -1);
 	return ret;
 }
 
@@ -98,8 +106,13 @@ static int comp_deactivate(struct cap_captbl *ct, capid_t capin, livenessid_t li
 
 	/* decrement the refcnt of the pgd, and top level of
 	 * captbl. */
-	cos_faa((int *)&pgd->refcnt_flags, -1);
-	cos_faa((int *)&ct_top->refcnt_flags, -1);
+	if (pmem) {
+		cos_non_cc_faa((int *)&pgd->refcnt_flags, -1);
+		cos_non_cc_faa((int *)&ct_top->refcnt_flags, -1);
+	} else {
+		cos_faa((int *)&pgd->refcnt_flags, -1);
+		cos_faa((int *)&ct_top->refcnt_flags, -1);
+	}
 
 	return 0;
 }

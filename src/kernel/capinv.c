@@ -187,7 +187,11 @@ kmem_deact_pre(struct cap_header *ch, struct captbl *ct, capid_t pgtbl_cap,
 		}
 
 		/* set the scan flag to avoid concurrent scanning. */
-		if (cos_cas((unsigned long *)&deact_cap->refcnt_flags, l, l | CAP_MEM_SCAN_FLAG) != CAS_SUCCESS) return -ECASFAIL;
+		if (pmem_cap) {
+			if (cos_non_cc_cas((unsigned long *)&deact_cap->refcnt_flags, l, l | CAP_MEM_SCAN_FLAG) != CAS_SUCCESS) return -ECASFAIL;
+		} else {
+			if (cos_cas((unsigned long *)&deact_cap->refcnt_flags, l, l | CAP_MEM_SCAN_FLAG) != CAS_SUCCESS) return -ECASFAIL;
+		}
 
 		/*
 		 * When gets here, we know quiescence has passed. and
@@ -201,11 +205,17 @@ kmem_deact_pre(struct cap_header *ch, struct captbl *ct, capid_t pgtbl_cap,
 
 		if (ret) {
 			/* unset scan and frozen bits. */
-			cos_cas((unsigned long *)&deact_cap->refcnt_flags, l | CAP_MEM_SCAN_FLAG,
-				l & ~(CAP_MEM_FROZEN_FLAG | CAP_MEM_SCAN_FLAG));
+			if (pmem_cap) {
+				cos_non_cc_cas((unsigned long *)&deact_cap->refcnt_flags, l | CAP_MEM_SCAN_FLAG,
+					l & ~(CAP_MEM_FROZEN_FLAG | CAP_MEM_SCAN_FLAG));
+			} else {
+				cos_cas((unsigned long *)&deact_cap->refcnt_flags, l | CAP_MEM_SCAN_FLAG,
+					l & ~(CAP_MEM_FROZEN_FLAG | CAP_MEM_SCAN_FLAG));
+			}
 			cos_throw(err, ret);
 		}
-		cos_cas((unsigned long *)&deact_cap->refcnt_flags, l | CAP_MEM_SCAN_FLAG, l);
+		if (pmem_cap) cos_non_cc_cas((unsigned long *)&deact_cap->refcnt_flags, l | CAP_MEM_SCAN_FLAG, l);
+		else cos_cas((unsigned long *)&deact_cap->refcnt_flags, l | CAP_MEM_SCAN_FLAG, l);
 	} else if (ch->type == CAP_PGTBL) {
 		struct cap_pgtbl *deact_cap = (struct cap_pgtbl *)ch;
 		void *page = deact_cap->pgtbl;
@@ -232,7 +242,11 @@ kmem_deact_pre(struct cap_header *ch, struct captbl *ct, capid_t pgtbl_cap,
 		}
 
 		/* set the scan flag to avoid concurrent scanning. */
-		if (cos_cas((unsigned long *)&deact_cap->refcnt_flags, l, l | CAP_MEM_SCAN_FLAG) != CAS_SUCCESS) return -ECASFAIL;
+		if (pmem_cap) {
+			if (cos_non_cc_cas((unsigned long *)&deact_cap->refcnt_flags, l, l | CAP_MEM_SCAN_FLAG) != CAS_SUCCESS) return -ECASFAIL;
+		} else {
+			if (cos_cas((unsigned long *)&deact_cap->refcnt_flags, l, l | CAP_MEM_SCAN_FLAG) != CAS_SUCCESS) return -ECASFAIL;
+		}
 
 		if (deact_cap->lvl == 0) {
 			/* PGD: only scan user mapping. */
@@ -247,11 +261,17 @@ kmem_deact_pre(struct cap_header *ch, struct captbl *ct, capid_t pgtbl_cap,
 
 		if (ret) {
 			/* unset scan and frozen bits. */
-			cos_cas((unsigned long *)&deact_cap->refcnt_flags, l | CAP_MEM_SCAN_FLAG,
-				l & ~(CAP_MEM_FROZEN_FLAG | CAP_MEM_SCAN_FLAG));
+			if (pmem_cap) {
+				cos_non_cc_cas((unsigned long *)&deact_cap->refcnt_flags, l | CAP_MEM_SCAN_FLAG,
+					l & ~(CAP_MEM_FROZEN_FLAG | CAP_MEM_SCAN_FLAG));
+			} else {
+				cos_cas((unsigned long *)&deact_cap->refcnt_flags, l | CAP_MEM_SCAN_FLAG,
+					l & ~(CAP_MEM_FROZEN_FLAG | CAP_MEM_SCAN_FLAG));
+			}
 			cos_throw(err, ret);
 		}
-		cos_cas((unsigned long *)&deact_cap->refcnt_flags, l | CAP_MEM_SCAN_FLAG, l);
+		if (pmem_cap) cos_non_cc_cas((unsigned long *)&deact_cap->refcnt_flags, l | CAP_MEM_SCAN_FLAG, l);
+		else cos_cas((unsigned long *)&deact_cap->refcnt_flags, l | CAP_MEM_SCAN_FLAG, l);
 	} else {
 		/* currently only captbl and pgtbl pages need to be
 		 * scanned before deactivation. */
@@ -277,12 +297,16 @@ kmem_deact_post(unsigned long *pte, unsigned long old_v)
 
 	/* Unset coskmem bit. Release the kmem frame. */
 	new_v = old_v & (~PGTBL_COSKMEM);
-	if (cos_cas(pte, old_v, new_v) != CAS_SUCCESS) cos_throw(err, -ECASFAIL);
-
+	if (pmem_pte) {
+		if (cos_non_cc_cas(pte, old_v, new_v) != CAS_SUCCESS) cos_throw(err, -ECASFAIL);
+	} else {
+		if (cos_cas(pte, old_v, new_v) != CAS_SUCCESS) cos_throw(err, -ECASFAIL);
+	}
 	ret = retypetbl_deref((void *)(old_v & PGTBL_FRAME_MASK));
 	if (ret) {
 		/* FIXME: handle this case? */
-		cos_cas(pte, new_v, old_v);
+		if (pmem_pte) cos_non_cc_cas(pte, new_v, old_v);
+		else cos_cas(pte, new_v, old_v);
 		cos_throw(err, ret);
 	}
 	/* zero out the page to avoid info leaking. */
@@ -339,7 +363,8 @@ cap_cpy(struct captbl *t, capid_t cap_to, capid_t capin_to,
 			if (l & CAP_MEM_FROZEN_FLAG) return -EINVAL;
 			if ((l & CAP_REFCNT_MAX) == CAP_REFCNT_MAX) return -EOVERFLOW;
 
-			cos_cas((unsigned long *)&(parent->refcnt_flags), old_v, l + 1);
+			if (VA_IN_IVSHMEM_RANGE(parent)) cos_non_cc_cas((unsigned long *)&(parent->refcnt_flags), old_v, l + 1);
+			else cos_cas((unsigned long *)&(parent->refcnt_flags), old_v, l + 1);
 
 			child->refcnt_flags = 1;
 			child->parent = parent;
@@ -351,7 +376,8 @@ cap_cpy(struct captbl *t, capid_t cap_to, capid_t capin_to,
 			if (l & CAP_MEM_FROZEN_FLAG) return -EINVAL;
 			if ((l & CAP_REFCNT_MAX) == CAP_REFCNT_MAX) return -EOVERFLOW;
 
-			cos_cas((unsigned long *)&(parent->refcnt_flags), old_v, l + 1);
+			if (VA_IN_IVSHMEM_RANGE(parent)) cos_non_cc_cas((unsigned long *)&(parent->refcnt_flags), old_v, l + 1);
+			else cos_cas((unsigned long *)&(parent->refcnt_flags), old_v, l + 1);
 
 			child->refcnt_flags = 1;
 			child->parent = parent;

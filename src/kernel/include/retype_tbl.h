@@ -97,6 +97,11 @@ retypetbl_cas(u32_t *a, u32_t old, u32_t new) {
 	return cos_cas((unsigned long *)a, old, new);
 }
 
+static inline int
+retypetbl_non_cc_cas(u32_t *a, u32_t old, u32_t new) {
+	return cos_non_cc_cas((unsigned long *)a, old, new);
+}
+
 int retypetbl_retype2user(void *pa);
 int retypetbl_retype2kern(void *pa);
 int retypetbl_retype2frame(void *pa);

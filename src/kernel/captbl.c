@@ -94,7 +94,11 @@ int captbl_deactivate(struct captbl *t, struct cap_captbl *dest_ct_cap, unsigned
 	ret = cap_capdeactivate(dest_ct_cap, capin, CAP_CAPTBL, lid);
 	if (ret) cos_throw(err, ret);
 
-	if (cos_cas((unsigned long *)&deact_cap->refcnt_flags, l, CAP_MEM_FROZEN_FLAG) != CAS_SUCCESS) cos_throw(err, -ECASFAIL);
+	if (pmem_cap) {
+		if (cos_non_cc_cas((unsigned long *)&deact_cap->refcnt_flags, l, CAP_MEM_FROZEN_FLAG) != CAS_SUCCESS) cos_throw(err, -ECASFAIL);
+	} else {
+		if (cos_cas((unsigned long *)&deact_cap->refcnt_flags, l, CAP_MEM_FROZEN_FLAG) != CAS_SUCCESS) cos_throw(err, -ECASFAIL);
+	}
 
 	/* deactivation success. We should either release the
 	 * page, or decrement parent cnt. */
@@ -102,11 +106,13 @@ int captbl_deactivate(struct captbl *t, struct cap_captbl *dest_ct_cap, unsigned
 		/* move the kmem to COSFRAME */
 		ret = kmem_deact_post(pte, old_v);
 		if (ret) {
-			cos_faa((int *)&deact_cap->refcnt_flags, 1);
+			if (pmem_cap) cos_non_cc_faa((int *)&deact_cap->refcnt_flags, 1);
+			else cos_faa((int *)&deact_cap->refcnt_flags, 1);
 			cos_throw(err, ret);
 		}
 	} else {
-		cos_faa((int*)&parent->refcnt_flags, -1);
+		if (pmem_cap) cos_faa((int*)&parent->refcnt_flags, -1);
+		else cos_faa((int*)&parent->refcnt_flags, -1);
 	}
 
 	return 0;

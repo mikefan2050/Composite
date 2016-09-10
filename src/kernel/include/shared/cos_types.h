@@ -870,8 +870,8 @@ cos_mem_fence(void)
 #define IVSHMEM_MAGIC "IVSHMEM"
 #define MAGIC_LEN 8
 #define IVSHMEM_UNTYPE_SIZE  PGD_SIZE*8
-#define PA_IN_IVSHMEM_RANGE(pa) (ivshmem_phy_addr && (pa) >= ivshmem_phy_addr && (pa) < ivshmem_phy_addr+IVSHMEM_TOT_SIZE)
-#define VA_IN_IVSHMEM_RANGE(va) (ivshmem_phy_addr && (va) >= (void *)ivshmem_addr && (va) < (void *)(ivshmem_addr+IVSHMEM_TOT_SIZE))
+#define PA_IN_IVSHMEM_RANGE(pa) (ivshmem_phy_addr && ((u32_t)pa) >= ivshmem_phy_addr && ((u32_t)pa) < ivshmem_phy_addr+IVSHMEM_TOT_SIZE)
+#define VA_IN_IVSHMEM_RANGE(va) (ivshmem_phy_addr && ((void *)va) >= (void *)ivshmem_addr && ((void *)va) < (void *)(ivshmem_addr+IVSHMEM_TOT_SIZE))
 #define IVSHMEM_LTBL_ENT_ORDER 20
 #define IVSHMEM_LTBL_TOT_ENTS (1<<IVSHMEM_LTBL_ENT_ORDER)
 #define IVSHMEM_LTBL_NODE_RANGE (IVSHMEM_LTBL_TOT_ENTS/NUM_NODE)

@@ -35,7 +35,9 @@ pgtbl_kmem_act(pgtbl_t pt, u32_t addr, unsigned long *kern_addr, unsigned long *
 
 	/* We keep the cos_frame entry, but mark it as COSKMEM so that
 	 * we won't use it for other kernel objects. */
-	if (unlikely(cos_cas((unsigned long *)pte, orig_v, new_v) != CAS_SUCCESS)) {
+	if (pmem_cap) ret = cos_non_cc_cas((unsigned long *)pte, orig_v, new_v);
+	else ret = cos_cas((unsigned long *)pte, orig_v, new_v);
+	if (unlikely(ret != CAS_SUCCESS)) {
 		/* restore the ref cnt. */
 		retypetbl_deref((void *)(orig_v & PGTBL_FRAME_MASK));
 		return -ECASFAIL;
@@ -166,7 +168,14 @@ pgtbl_deactivate(struct captbl *t, struct cap_captbl *dest_ct_cap, unsigned long
 		assert(!pgtbl_cap && !cosframe_addr);
 	}
 
-	if (cos_cas((unsigned long *)&deact_cap->refcnt_flags, l, CAP_MEM_FROZEN_FLAG) != CAS_SUCCESS) cos_throw(err, -ECASFAIL);
+	ret = cap_capdeactivate(dest_ct_cap, capin, CAP_PGTBL, lid);
+	if (ret) cos_throw(err, ret);
+
+	if (pmem_cap) {
+		if (cos_non_cc_cas((unsigned long *)&deact_cap->refcnt_flags, l, CAP_MEM_FROZEN_FLAG) != CAS_SUCCESS) cos_throw(err, -ECASFAIL);
+	} else {
+		if (cos_cas((unsigned long *)&deact_cap->refcnt_flags, l, CAP_MEM_FROZEN_FLAG) != CAS_SUCCESS) cos_throw(err, -ECASFAIL);
+	}
 
 	/* deactivation success. We should either release the
 	 * page, or decrement parent cnt. */
@@ -174,11 +183,13 @@ pgtbl_deactivate(struct captbl *t, struct cap_captbl *dest_ct_cap, unsigned long
 		/* move the kmem to COSFRAME */
 		ret = kmem_deact_post(pte, old_v);
 		if (ret) {
-			cos_faa((int *)&deact_cap->refcnt_flags, 1);
+			if (pmem_cap) cos_non_cc_faa((int *)&deact_cap->refcnt_flags, 1);
+			else cos_faa((int *)&deact_cap->refcnt_flags, 1);
 			cos_throw(err, ret);
 		}
 	} else {
-		cos_faa((int*)&parent->refcnt_flags, -1);
+		if (pmem_cap) cos_non_cc_faa((int*)&parent->refcnt_flags, -1);
+		else cos_faa((int*)&parent->refcnt_flags, -1);
 	}
 
 	/* FIXME: this should be before the kmem_deact_post */

@@ -106,7 +106,11 @@ __pgtbl_setleaf(struct ert_intern *a, void *v)
 	old = (u32_t)(a->next);
 	new = (u32_t)(v);
 
-	if (!cos_cas((unsigned long *)a, old, new)) return -ECASFAIL;
+	if (VA_IN_IVSHMEM_RANGE(a)) {
+		if (!cos_non_cc_cas((unsigned long *)a, old, new)) return -ECASFAIL;
+	} else {
+		if (!cos_cas((unsigned long *)a, old, new)) return -ECASFAIL;
+	}
 
 	return 0;
 }
@@ -119,7 +123,11 @@ __pgtbl_update_leaf(struct ert_intern *a, void *v, u32_t old)
 	u32_t new;
 
 	new = (u32_t)(v);
-	if (!cos_cas((unsigned long *)a, old, new)) return -ECASFAIL;
+	if (VA_IN_IVSHMEM_RANGE(a)) {
+		if (!cos_non_cc_cas((unsigned long *)a, old, new)) return -ECASFAIL;
+	} else {
+		if (!cos_cas((unsigned long *)a, old, new)) return -ECASFAIL;
+	}
 
 	return 0;
 }
@@ -134,7 +142,11 @@ __pgtbl_set(struct ert_intern *a, void *v, void *accum, int isleaf)
 	old = (u32_t)a->next;
 	new = (u32_t)chal_va2pa((void*)((u32_t)v & PGTBL_FRAME_MASK)) | PGTBL_INTERN_DEF;
 
-	if (!cos_cas((unsigned long *)&a->next, old, new)) return -ECASFAIL;
+	if (VA_IN_IVSHMEM_RANGE(&a->next)) {
+		if (!cos_non_cc_cas((unsigned long *)&a->next, old, new)) return -ECASFAIL;
+	} else {
+		if (!cos_cas((unsigned long *)&a->next, old, new)) return -ECASFAIL;
+	}
 
 	return 0;
 }
