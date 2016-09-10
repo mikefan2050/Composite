@@ -43,6 +43,10 @@ comp_activate(struct captbl *t, capid_t cap, capid_t capin, capid_t captbl_cap, 
 	ptc = (struct cap_pgtbl *)captbl_lkup(t, pgtbl_cap);
 	if (unlikely(!ptc || ptc->h.type != CAP_PGTBL || ptc->lvl > 0)) return -EINVAL;
 
+	if (pmem_mem) {
+		assert(PA_IN_IVSHMEM_RANGE(ptc->pgtbl));
+		assert(lid >= LTBL_ENTS);
+	}
 	v = ptc->refcnt_flags;
 	if (v & CAP_MEM_FROZEN_FLAG) return -EINVAL;
 	if (cos_cas((unsigned long *)&ptc->refcnt_flags, v, v + 1) != CAS_SUCCESS) return -ECASFAIL;

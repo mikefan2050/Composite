@@ -281,7 +281,7 @@ captbl_add(struct captbl *t, capid_t cap, cap_t type, int *retval)
 
 			/* non_zero liv_id means deactivation happened. */
 			if (header_i->liveness_id && header_i->type == CAP_QUIESCENCE) {
-				if (ltbl_get_timestamp(header_i->liveness_id, &past_ts)) cos_throw(err, -EFAULT);
+				if (ltbl_get_timestamp(header_i->liveness_id, &past_ts, pmem)) cos_throw(err, -EFAULT);
 				/* quiescence period for cap entries
 				 * is the worst-case in kernel
 				 * execution time. */
@@ -296,10 +296,8 @@ captbl_add(struct captbl *t, capid_t cap, cap_t type, int *retval)
 			/* means a deactivation on this cap entry happened
 			 * before. */
 			rdtscll(curr_ts);
-			if (ltbl_get_timestamp(p->liveness_id, &past_ts)) {
-				cos_throw(err, -EFAULT);
-			}
 			if (!QUIESCENCE_CHECK(curr_ts, past_ts, KERN_QUIESCENCE_CYCLES)) cos_throw(err, -EQUIESCENCE);
+			if (ltbl_get_timestamp(p->liveness_id, &past_ts, pmem)) cos_throw(err, -EFAULT);
 		}
 	}
 
@@ -354,7 +352,7 @@ captbl_del(struct captbl *t, capid_t cap, cap_t type, livenessid_t lid)
 	if (unlikely(!(l.amap & (1<<off)))) cos_throw(err, -ENOENT);
 
 	/* Update timestamp first. */
-	ret = ltbl_timestamp_update(lid);
+	ret = ltbl_timestamp_update(lid, pmem);
 
 	if (unlikely(ret)) cos_throw(err, ret);
 

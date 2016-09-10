@@ -138,6 +138,10 @@ pgtbl_deactivate(struct captbl *t, struct cap_captbl *dest_ct_cap, unsigned long
 
 	deact_header = captbl_lkup(dest_ct_cap->captbl, capin);
 	if (!deact_header || deact_header->type != CAP_PGTBL) cos_throw(err, -EINVAL);
+	if (pmem_cap) {
+		assert(lid >= LTBL_ENTS);
+		lid -= LTBL_ENTS;
+	}
 	deact_cap = (struct cap_pgtbl *)deact_header;
 	parent    = deact_cap->parent;
 

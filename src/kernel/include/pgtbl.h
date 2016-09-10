@@ -245,9 +245,8 @@ pgtbl_quie_check(u32_t orig_v, int pmem)
 		/* An unmap happened at this vaddr before. We need to
 		 * make sure that all cores have done tlb flush before
 		 * creating new mapping. */
-		lid += (pmem*LTBL_ENTS);
 
-		if (ltbl_get_timestamp(lid, &ts)) return -EFAULT;
+		if (ltbl_get_timestamp(lid, &ts, pmem)) return -EFAULT;
 		if (!tlb_quiescence_check(ts))    {
 			printk("kern tsc %llu, lid %d, last flush %llu\n", ts, lid, tlb_quiescence[get_cpuid()].last_periodic_flush);
 			return -EQUIESCENCE;
@@ -394,7 +393,7 @@ pgtbl_mapping_del(pgtbl_t pt, u32_t addr, u32_t liv_id)
 	liv_id -= (pmem*LTBL_ENTS);
 
 	/* Liveness tracking of the unmapping VAS. */
-	ret = ltbl_timestamp_update(liv_id+pmem*LTBL_ENTS);
+	ret = ltbl_timestamp_update(liv_id, pmem);
 	if (unlikely(ret)) goto done;
 
 	/* get the pte */
@@ -545,7 +544,7 @@ pgtbl_mapping_scan(struct cap_pgtbl *pt)
 		if (pte & PGTBL_QUIESCENCE) {
 			lid = pte >> PGTBL_PAGEIDX_SHIFT;
 
-			if (ltbl_get_timestamp(lid, &past_ts)) return -EFAULT;
+			if (ltbl_get_timestamp(lid, &past_ts, pmem)) return -EFAULT;
 			if (!tlb_quiescence_check(past_ts)) return -EQUIESCENCE;
 		}
 	}

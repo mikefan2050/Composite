@@ -251,6 +251,10 @@ thd_deactivate(struct captbl *ct, struct cap_captbl *dest_ct, unsigned long capi
 
 	thd_header = captbl_lkup(dest_ct->captbl, capin);
 	if (!thd_header || thd_header->type != CAP_THD) cos_throw(err, -EINVAL);
+	if (pmem) {
+		assert(lid >= LTBL_ENTS);
+		lid -= LTBL_ENTS;
+	}
 	thd = ((struct cap_thd *)thd_header)->t;
 	assert(thd->refcnt);
 

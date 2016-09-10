@@ -144,33 +144,36 @@ ltbl_get(livenessid_t id, struct liveness_data *ld)
 }
 
 static inline int
-ltbl_get_timestamp(livenessid_t id, u64_t *ts)
+ltbl_get_timestamp(livenessid_t id, u64_t *ts, int pmem)
 {
 	struct liveness_entry *ent;
-	int pmem = (id >= LTBL_ENTS);
 
-	ent = __ltbl_lkupan(LTBL_REF(pmem), id-pmem*LTBL_ENTS, __ltbl_maxdepth()+1, NULL);
+	if (unlikely(id >= LTBL_ENTS)) return -EINVAL;
+	ent = __ltbl_lkupan(LTBL_REF(pmem), id, __ltbl_maxdepth()+1, NULL);
 	assert(ent);
 
+	if (pmem) cos_flush_cache(ent);
 	*ts = ent->deact_timestamp;
 
 	return 0;
 }
 
 static inline int
-ltbl_timestamp_update(livenessid_t id)
+ltbl_timestamp_update(livenessid_t id, int pmem)
 {
 	struct liveness_entry *ent;
-	int pmem = (id >= LTBL_ENTS);
 
-	ent = __ltbl_lkupan(LTBL_REF(pmem), id-pmem*LTBL_ENTS, __ltbl_maxdepth(), NULL);
+	if (unlikely(id >= LTBL_ENTS)) return -EINVAL;
+
+	ent = __ltbl_lkupan(LTBL_REF(pmem), id, __ltbl_maxdepth(), NULL);
 
 	/* Barrier here to ensure tsc is taken after store
 	 * instruction (avoid out-of-order execution). */
 //	cos_inst_bar();
 	cos_mem_fence();
 
-	rdtscll(ent->deact_timestamp);
+	if (pmem) non_cc_rdtscll(&ent->deact_timestamp);
+	else rdtscll(ent->deact_timestamp);
 
 	return 0;
 }
