@@ -243,9 +243,6 @@ pgtbl_check_pgd_absent(pgtbl_t pt, u32_t addr)
 
 extern struct tlb_quiescence tlb_quiescence[NUM_CPU] CACHE_ALIGNED;
 
-int tlb_quiescence_check(u64_t timestamp);
-
-
 static inline int
 pgtbl_quie_check(u32_t orig_v, int pmem)
 {
@@ -259,7 +256,7 @@ pgtbl_quie_check(u32_t orig_v, int pmem)
 		 * creating new mapping. */
 
 		if (ltbl_get_timestamp(lid, &ts, pmem)) return -EFAULT;
-		if (!tlb_quiescence_check(ts))    {
+		if (!cos_quiescence_check(0, ts, 0, TLB_QUIESCENCE))    {
 			printk("kern tsc %llu, lid %d, last flush %llu\n", ts, lid, tlb_quiescence[get_cpuid()].last_periodic_flush);
 			return -EQUIESCENCE;
 		}
@@ -302,7 +299,7 @@ pgtbl_mapping_add(pgtbl_t pt, u32_t addr, u32_t page, u32_t flags)
 	if (orig_v & PGTBL_COSFRAME) return -EPERM;
 
 	/* Quiescence check */
-	ret = pgtbl_quie_check(orig_v, PA_IN_IVSHMEM_RANGE((u32_t)pt));
+	ret = pgtbl_quie_check(orig_v, pmem);
 	if (ret) return ret;
 
 	/* ref cnt on the frame. */
@@ -617,5 +614,6 @@ static void pgtbl_init(void) {
 
 int cap_memactivate(struct captbl *ct, struct cap_pgtbl *pt, capid_t frame_cap, capid_t dest_pt, vaddr_t vaddr);
 int pgtbl_kmem_act(pgtbl_t pt, u32_t addr, unsigned long *kern_addr, unsigned long **pte);
+int tlb_quiescence_check(u64_t timestamp);
 
 #endif /* PGTBL_H */

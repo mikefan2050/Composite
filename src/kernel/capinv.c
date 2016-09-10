@@ -179,11 +179,11 @@ kmem_deact_pre(struct cap_header *ch, struct captbl *ct, capid_t pgtbl_cap,
 			/* top level has tlb quiescence period (due to
 			 * the optimization to avoid current_component
 			 * lookup on invocation path). */
-			if (!tlb_quiescence_check(deact_cap->frozen_ts)) return -EQUIESCENCE;
+			if (!cos_quiescence_check(0, deact_cap->frozen_ts, 0, TLB_QUIESCENCE)) return -EQUIESCENCE;
 		} else {
 			/* other levels have kernel quiescence period. */
 			rdtscll(curr);
-			if (!QUIESCENCE_CHECK(curr, deact_cap->frozen_ts, KERN_QUIESCENCE_CYCLES)) return -EQUIESCENCE;
+			if (!cos_quiescence_check(curr, deact_cap->frozen_ts, KERN_QUIESCENCE_CYCLES, KERNEL_QUIESCENCE)) return -EQUIESCENCE;
 		}
 
 		/* set the scan flag to avoid concurrent scanning. */
@@ -232,13 +232,13 @@ kmem_deact_pre(struct cap_header *ch, struct captbl *ct, capid_t pgtbl_cap,
 		/* Quiescence check! */
 		if (deact_cap->lvl == 0) {
 			/* top level has tlb quiescence period. */
-			if (!tlb_quiescence_check(deact_cap->frozen_ts)) return -EQUIESCENCE;
+			if (!cos_quiescence_check(0, deact_cap->frozen_ts, 0, TLB_QUIESCENCE)) return -EQUIESCENCE;
 		} else {
 			/* other levels have kernel quiescence
 			 * period. (but the mapping scan will ensure
 			 * tlb quiescence implicitly). */
 			rdtscll(curr);
-			if (!QUIESCENCE_CHECK(curr, deact_cap->frozen_ts, KERN_QUIESCENCE_CYCLES)) return -EQUIESCENCE;
+			if (!cos_quiescence_check(curr, deact_cap->frozen_ts, KERN_QUIESCENCE_CYCLES, KERNEL_QUIESCENCE)) return -EQUIESCENCE;
 		}
 
 		/* set the scan flag to avoid concurrent scanning. */
@@ -442,7 +442,7 @@ cap_move(struct captbl *t, capid_t cap_to, capid_t capin_to,
 		cos_mem_fence();
 		if ((old_v & PGTBL_COSFRAME) == 0) return -EPERM;
 		if (old_v_to & (PGTBL_COSFRAME | PGTBL_PRESENT)) return -EPERM;
-		ret = pgtbl_quie_check(old_v_to, PA_IN_IVSHMEM_RANGE((u32_t)((struct cap_pgtbl *)ctfrom)->pgtbl));
+		ret = pgtbl_quie_check(old_v_to, PA_IN_IVSHMEM_RANGE(((struct cap_pgtbl *)ctfrom)->pgtbl));
 		if (ret) return ret;
 
 		/* valid to move. doing CAS next. */

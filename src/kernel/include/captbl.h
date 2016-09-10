@@ -316,7 +316,7 @@ captbl_add(struct captbl *t, capid_t cap, cap_t type, int *retval)
 				/* quiescence period for cap entries
 				 * is the worst-case in kernel
 				 * execution time. */
-				if (!QUIESCENCE_CHECK(curr_ts, past_ts, KERN_QUIESCENCE_CYCLES)) cos_throw(err, -EQUIESCENCE);
+				if (!cos_quiescence_check(curr_ts, past_ts, KERN_QUIESCENCE_CYCLES, KERNEL_QUIESCENCE)) cos_throw(err, -EQUIESCENCE);
 			}
 
 			header_i = (void *)header_i + ent_size; /* get next header */
@@ -328,8 +328,8 @@ captbl_add(struct captbl *t, capid_t cap, cap_t type, int *retval)
 			 * before. */
 			if (pmem) non_cc_rdtscll(&curr_ts);
 			else rdtscll(curr_ts);
-			if (!QUIESCENCE_CHECK(curr_ts, past_ts, KERN_QUIESCENCE_CYCLES)) cos_throw(err, -EQUIESCENCE);
 			if (ltbl_get_timestamp(p->liveness_id, &past_ts, pmem)) cos_throw(err, -EFAULT);
+			if (!cos_quiescence_check(curr_ts, past_ts, KERN_QUIESCENCE_CYCLES, KERNEL_QUIESCENCE)) cos_throw(err, -EQUIESCENCE);
 		}
 	}
 
