@@ -139,12 +139,12 @@ kmem_unalloc(unsigned long *pte)
  */
 int
 kmem_deact_pre(struct cap_header *ch, struct captbl *ct, capid_t pgtbl_cap,
-	       capid_t cosframe_addr, unsigned long **p_pte, unsigned long *v)
+	       capid_t cosframe_addr, unsigned long **p_pte, unsigned long *v, int pmem_mem)
 {
 	struct cap_pgtbl *cap_pt;
 	u32_t flags, old_v, pa;
-	u64_t curr;
-	int ret;
+	u64_t curr = 0, max = 0;
+	int ret, pmem_cap = VA_IN_IVSHMEM_RANGE(ch);
 
 	assert(ct && ch);
 	if (!pgtbl_cap || !cosframe_addr) cos_throw(err, -EINVAL);
@@ -160,6 +160,7 @@ kmem_deact_pre(struct cap_header *ch, struct captbl *ct, capid_t pgtbl_cap,
 	pa = old_v & PGTBL_FRAME_MASK;
 	if (!(old_v & PGTBL_COSKMEM)) cos_throw(err, -EINVAL);
 	assert(!(old_v & PGTBL_QUIESCENCE));
+	assert(pmem_mem == PA_IN_IVSHMEM_RANGE(pa));
 
 	/* Scan the page to make sure there's nothing left. */
 	if (ch->type == CAP_CAPTBL) {
@@ -198,13 +199,19 @@ kmem_deact_pre(struct cap_header *ch, struct captbl *ct, capid_t pgtbl_cap,
 		 * we are holding the scan lock.
 		 */
 		if (deact_cap->lvl < CAPTBL_DEPTH - 1) {
+			if (pmem_mem) max = deact_cap->frozen_ts;
 			ret = kmem_page_scan(page, PAGE_SIZE);
 		} else {
 			ret = captbl_kmem_scan(deact_cap, &max);
 			if (!ret) {
 				if (!cos_quiescence_check(curr, max, KERN_QUIESCENCE_CYCLES, KERNEL_QUIESCENCE)) return -EQUIESCENCE;
 			}
+			if (!ret && pmem_mem) {
+				if (max < deact_cap->frozen_ts) max = deact_cap->frozen_ts;
+			}
+
 		}
+		if (!ret && pmem_mem && !cos_quiescence_check(0, max, 0, NON_CC_QUIESCENCE)) ret = -EQUIESCENCE;
 
 		if (ret) {
 			/* unset scan and frozen bits. */
@@ -253,6 +260,7 @@ kmem_deact_pre(struct cap_header *ch, struct captbl *ct, capid_t pgtbl_cap,
 
 		if (deact_cap->lvl == 0) {
 			/* PGD: only scan user mapping. */
+			if (pmem_mem) max = deact_cap->frozen_ts;
 			ret = kmem_page_scan(page, PAGE_SIZE - KERNEL_PGD_REGION_SIZE);
 		} else if (deact_cap->lvl == PGTBL_DEPTH - 1) {
 			/* Leaf level, scan mapping. */
@@ -260,10 +268,15 @@ kmem_deact_pre(struct cap_header *ch, struct captbl *ct, capid_t pgtbl_cap,
 			if (!ret) {
 				if (!cos_quiescence_check(0, max, 0, TLB_QUIESCENCE)) return -EQUIESCENCE;
 			}
+			if (!ret && pmem_mem) {
+				if (max < deact_cap->frozen_ts) max = deact_cap->frozen_ts;
+			}
 		} else {
 			/* don't have this with 2-level pgtbl. */
+			if (pmem_mem) max = deact_cap->frozen_ts;
 			ret = kmem_page_scan(page, PAGE_SIZE);
 		}
+		if (!ret && pmem_mem && !cos_quiescence_check(0, max, 0, NON_CC_QUIESCENCE)) ret = -EQUIESCENCE;
 
 		if (ret) {
 			/* unset scan and frozen bits. */
@@ -296,9 +309,9 @@ err:
 
 /* Updates the pte, deref the frame and zero out the page. */
 int
-kmem_deact_post(unsigned long *pte, unsigned long old_v)
+kmem_deact_post(unsigned long *pte, unsigned long old_v, int pmem)
 {
-	int ret;
+	int ret, pmem_pte = VA_IN_IVSHMEM_RANGE(pte);
 	u32_t new_v;
 
 	/* Unset coskmem bit. Release the kmem frame. */
@@ -317,7 +330,7 @@ kmem_deact_post(unsigned long *pte, unsigned long old_v)
 	}
 	/* zero out the page to avoid info leaking. */
 	memset(chal_pa2va((paddr_t)(old_v & PGTBL_FRAME_MASK)), 0, PAGE_SIZE);
-
+	if(pmem) cos_clwb_range(chal_pa2va((paddr_t)(old_v & PGTBL_FRAME_MASK)), chal_pa2va((paddr_t)(old_v & PGTBL_FRAME_MASK))+PAGE_SIZE);
 	return 0;
 err:
 	return ret;

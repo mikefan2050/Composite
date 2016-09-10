@@ -265,8 +265,8 @@ captbl_add(struct captbl *t, capid_t cap, cap_t type, int *retval)
 {
 	struct cap_header *p, *h;
 	struct cap_header l, o;
-	u64_t curr_ts, past_ts;
-	int ret = 0, off;
+	u64_t curr_ts, past_ts, max_past_ts = 0;
+	int ret = 0, off, pmem = VA_IN_IVSHMEM_RANGE(t);
 	cap_sz_t sz = __captbl_cap2sz(type);
 
 	if (unlikely(sz == CAP_SZ_ERR)) cos_throw(err, -EINVAL);
@@ -316,11 +316,13 @@ captbl_add(struct captbl *t, capid_t cap, cap_t type, int *retval)
 				/* quiescence period for cap entries
 				 * is the worst-case in kernel
 				 * execution time. */
+				if (past_ts > max_past_ts) max_past_ts = past_ts;
 				if (!cos_quiescence_check(curr_ts, past_ts, KERN_QUIESCENCE_CYCLES, KERNEL_QUIESCENCE)) cos_throw(err, -EQUIESCENCE);
 			}
 
 			header_i = (void *)header_i + ent_size; /* get next header */
 		}
+		if (pmem && !cos_quiescence_check(curr_ts, max_past_ts, 0, NON_CC_QUIESCENCE)) cos_throw(err, -EQUIESCENCE);
 	} else {
 		/* check only the current single entry */
 		if (p->liveness_id && p->type == CAP_QUIESCENCE) {
@@ -330,6 +332,7 @@ captbl_add(struct captbl *t, capid_t cap, cap_t type, int *retval)
 			else rdtscll(curr_ts);
 			if (ltbl_get_timestamp(p->liveness_id, &past_ts, pmem)) cos_throw(err, -EFAULT);
 			if (!cos_quiescence_check(curr_ts, past_ts, KERN_QUIESCENCE_CYCLES, KERNEL_QUIESCENCE)) cos_throw(err, -EQUIESCENCE);
+			if (pmem && !cos_quiescence_check(curr_ts, past_ts, 0, NON_CC_QUIESCENCE)) cos_throw(err, -EQUIESCENCE);
 		}
 	}
 
@@ -363,9 +366,9 @@ err:
 static inline int
 captbl_del(struct captbl *t, capid_t cap, cap_t type, livenessid_t lid)
 {
-	struct cap_header *p, *h;
+	struct cap_header *p, *h, *th;
 	struct cap_header l, o;
-	int ret = 0, off;
+	int ret = 0, off, pmem = VA_IN_IVSHMEM_RANGE(t);
 
 	if (unlikely(cap >= __captbl_maxid())) cos_throw(err, -EINVAL);
 	if (pmem) p = __captbl_non_cc_lkupan(t, cap, CAPTBL_DEPTH, NULL);
@@ -446,7 +449,7 @@ static void *
 captbl_prune(struct captbl *t, capid_t cap, u32_t depth, int *retval)
 {
 	unsigned long *intern, p, new;
-	int ret = 0;
+	int ret = 0, pmem = VA_IN_IVSHMEM_RANGE(t);
 
 	if (unlikely(cap   >= __captbl_maxid() ||
 		     depth >= captbl_maxdepth())) cos_throw(err, -EINVAL);

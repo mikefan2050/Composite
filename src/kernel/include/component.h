@@ -36,17 +36,22 @@ comp_activate(struct captbl *t, capid_t cap, capid_t capin, capid_t captbl_cap, 
 	struct cap_pgtbl  *ptc;
 	struct cap_captbl *ctc;
 	u32_t v;
-	int ret = 0;
+	int ret = 0, pmem_cap, pmem_mem;
 
 	ctc = (struct cap_captbl *)captbl_lkup(t, captbl_cap);
 	if (unlikely(!ctc || ctc->h.type != CAP_CAPTBL || ctc->lvl > 0)) return -EINVAL;
 	ptc = (struct cap_pgtbl *)captbl_lkup(t, pgtbl_cap);
 	if (unlikely(!ptc || ptc->h.type != CAP_PGTBL || ptc->lvl > 0)) return -EINVAL;
 
+	/* global component has reference to global cap_tbl and pg_tbl*/
+	pmem_cap = VA_IN_IVSHMEM_RANGE(ctc);
+	if (pmem_cap) assert(VA_IN_IVSHMEM_RANGE(ptc));
+	pmem_mem = VA_IN_IVSHMEM_RANGE(ctc->captbl);
 	if (pmem_mem) {
 		assert(PA_IN_IVSHMEM_RANGE(ptc->pgtbl));
 		assert(lid >= LTBL_ENTS);
 	}
+
 	v = ptc->refcnt_flags;
 	if (v & CAP_MEM_FROZEN_FLAG) return -EINVAL;
 	if (pmem_cap) {
@@ -89,7 +94,7 @@ undo_ptc:
 
 static int comp_deactivate(struct cap_captbl *ct, capid_t capin, livenessid_t lid)
 { 
-	int ret;
+	int ret, pmem;
 	struct cap_comp *compc;
 	struct cap_pgtbl *pgd;
 	struct cap_captbl *ct_top;
@@ -100,6 +105,8 @@ static int comp_deactivate(struct cap_captbl *ct, capid_t capin, livenessid_t li
 	ltbl_expire(&compc->info.liveness);
 	pgd    = compc->pgd;
 	ct_top = compc->ct_top;
+	pmem = VA_IN_IVSHMEM_RANGE(pgd);
+	if (pmem) assert(VA_IN_IVSHMEM_RANGE(ct_top));
 
 	ret = cap_capdeactivate(ct, capin, CAP_COMP, lid); 
 	if (ret) return ret;

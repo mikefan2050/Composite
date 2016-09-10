@@ -51,11 +51,12 @@ int captbl_deactivate(struct captbl *t, struct cap_captbl *dest_ct_cap, unsigned
 	struct cap_captbl *deact_cap, *parent;
 
 	unsigned long l, old_v = 0, *pte = NULL;
-	int ret;
+	int ret, pmem_cap, pmem_mem;
 
 	deact_header = captbl_lkup(dest_ct_cap->captbl, capin);
 	if (!deact_header || deact_header->type != CAP_CAPTBL) cos_throw(err, -EINVAL);
 
+	pmem_cap = VA_IN_IVSHMEM_RANGE(deact_header);
 	if (pmem_cap) {
 		assert(lid >= LTBL_ENTS);
 		lid -= LTBL_ENTS;
@@ -63,6 +64,8 @@ int captbl_deactivate(struct captbl *t, struct cap_captbl *dest_ct_cap, unsigned
 		assert(lid < LTBL_ENTS);
 	}
 	deact_cap = (struct cap_captbl *)deact_header;
+	pmem_mem = VA_IN_IVSHMEM_RANGE(deact_cap->captbl);
+	if (pmem_cap) assert(pmem_mem);
 	l = deact_cap->refcnt_flags;
 
 //	assert(deact_cap->refcnt_flags & CAP_REFCNT_MAX);
@@ -83,7 +86,7 @@ int captbl_deactivate(struct captbl *t, struct cap_captbl *dest_ct_cap, unsigned
 		 * and cos_frame cap to release the kmem page. */
 
 		ret = kmem_deact_pre(deact_header, t, pgtbl_cap,
-				     cosframe_addr, &pte, &old_v);
+				     cosframe_addr, &pte, &old_v, pmem_mem);
 		if (ret) cos_throw(err, ret);
 	} else {
 		/* more reference exists. Sanity check. */
@@ -104,7 +107,7 @@ int captbl_deactivate(struct captbl *t, struct cap_captbl *dest_ct_cap, unsigned
 	 * page, or decrement parent cnt. */
 	if (parent == NULL) {
 		/* move the kmem to COSFRAME */
-		ret = kmem_deact_post(pte, old_v);
+		ret = kmem_deact_post(pte, old_v, pmem_mem);
 		if (ret) {
 			if (pmem_cap) cos_non_cc_faa((int *)&deact_cap->refcnt_flags, 1);
 			else cos_faa((int *)&deact_cap->refcnt_flags, 1);

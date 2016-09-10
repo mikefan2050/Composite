@@ -10,6 +10,8 @@ pgtbl_kmem_act(pgtbl_t pt, u32_t addr, unsigned long *kern_addr, unsigned long *
 {
 	struct ert_intern *pte;
 	u32_t orig_v, new_v, accum = 0;
+	/* Is the pg_tbl itsel in global memory? Is the actual memory page in global memory? */
+	int pmem_cap = PA_IN_IVSHMEM_RANGE(pt), pmem_mem, ret;
 
 	assert(pt);
 	assert((PGTBL_FLAG_MASK & addr) == 0);
@@ -36,8 +38,8 @@ pgtbl_kmem_act(pgtbl_t pt, u32_t addr, unsigned long *kern_addr, unsigned long *
 	/* pa2va (value in *kern_addr) will return NULL if the page is
 	 * not kernel accessible */
 	if (unlikely(!*kern_addr)) return -EINVAL; /* cannot retype a non-kernel accessible page */
-	if (unlikely(retypetbl_kern_ref((void *)(new_v & PGTBL_FRAME_MASK)))) return -EFAULT;
-
+	pmem_mem = VA_IN_IVSHMEM_RANGE(*kern_addr);
+	if (pmem_cap) assert(pmem_mem);
 	if (pmem_mem) {
 		if (unlikely(retypetbl_non_cc_kern_ref((void *)(new_v & PGTBL_FRAME_MASK)))) return -EFAULT;
 	} else {
@@ -101,7 +103,7 @@ cap_memactivate(struct captbl *ct, struct cap_pgtbl *pt, capid_t frame_cap, capi
 	unsigned long *pte, cosframe, orig_v;
 	struct cap_header *dest_pt_h;
 	u32_t flags;
-	int ret;
+	int ret, pmem = PA_IN_IVSHMEM_RANGE(pt->pgtbl);
 
 	if (unlikely(pt->lvl || (pt->refcnt_flags & CAP_MEM_FROZEN_FLAG))) return -EINVAL;
 
@@ -156,10 +158,11 @@ pgtbl_deactivate(struct captbl *t, struct cap_captbl *dest_ct_cap, unsigned long
 	struct cap_pgtbl *deact_cap, *parent;
 
 	unsigned long l, old_v = 0, *pte = NULL;
-	int ret;
+	int ret, pmem_cap, pmem_mem;
 
 	deact_header = captbl_lkup(dest_ct_cap->captbl, capin);
 	if (!deact_header || deact_header->type != CAP_PGTBL) cos_throw(err, -EINVAL);
+	pmem_cap = VA_IN_IVSHMEM_RANGE(deact_header);
 	if (pmem_cap) {
 		assert(lid >= LTBL_ENTS);
 		lid -= LTBL_ENTS;
@@ -168,6 +171,8 @@ pgtbl_deactivate(struct captbl *t, struct cap_captbl *dest_ct_cap, unsigned long
 	parent    = deact_cap->parent;
 
 	l = deact_cap->refcnt_flags;
+	pmem_mem = VA_IN_IVSHMEM_RANGE(deact_cap->pgtbl);
+	if (pmem_cap) assert(pmem_mem);
 	assert(l & CAP_REFCNT_MAX);
 
 	if ((l & CAP_REFCNT_MAX) != 1) {
@@ -180,7 +185,7 @@ pgtbl_deactivate(struct captbl *t, struct cap_captbl *dest_ct_cap, unsigned long
 		/* Last reference to the captbl page. Require pgtbl
 		 * and cos_frame cap to release the kmem page. */
 		ret = kmem_deact_pre(deact_header, t, pgtbl_cap, 
-				     cosframe_addr, &pte, &old_v);
+				     cosframe_addr, &pte, &old_v, pmem_mem);
 		if (ret) cos_throw(err, ret);
 	} else {
 		/* more reference exists. */
@@ -201,7 +206,7 @@ pgtbl_deactivate(struct captbl *t, struct cap_captbl *dest_ct_cap, unsigned long
 	 * page, or decrement parent cnt. */
 	if (parent == NULL) { 
 		/* move the kmem to COSFRAME */
-		ret = kmem_deact_post(pte, old_v);
+		ret = kmem_deact_post(pte, old_v, pmem_mem);
 		if (ret) {
 			if (pmem_cap) cos_non_cc_faa((int *)&deact_cap->refcnt_flags, 1);
 			else cos_faa((int *)&deact_cap->refcnt_flags, 1);
@@ -211,10 +216,6 @@ pgtbl_deactivate(struct captbl *t, struct cap_captbl *dest_ct_cap, unsigned long
 		if (pmem_cap) cos_non_cc_faa((int*)&parent->refcnt_flags, -1);
 		else cos_faa((int*)&parent->refcnt_flags, -1);
 	}
-
-	/* FIXME: this should be before the kmem_deact_post */
-	ret = cap_capdeactivate(dest_ct_cap, capin, CAP_PGTBL, lid);
-	if (ret) cos_throw(err, ret);
 
 	return 0;
 err:

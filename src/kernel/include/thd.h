@@ -222,7 +222,7 @@ thd_activate(struct captbl *t, capid_t cap, capid_t capin, struct thread *thd, c
 	thd->invstk[0].ip = thd->invstk[0].sp = 0;
 	thd->tid          = thdid_alloc();
 	thd->refcnt       = 1;
-     	thd->invstk_top   = 0;
+	thd->invstk_top   = 0;
 	thd->cpuid        = get_cpuid();
 	assert(thd->tid <= MAX_NUM_THREADS);
 
@@ -247,10 +247,11 @@ thd_deactivate(struct captbl *ct, struct cap_captbl *dest_ct, unsigned long capi
 	struct cap_header *thd_header;
 	struct thread *thd;
 	unsigned long old_v = 0, *pte = NULL;
-	int ret;
+	int ret, pmem;
 
 	thd_header = captbl_lkup(dest_ct->captbl, capin);
 	if (!thd_header || thd_header->type != CAP_THD) cos_throw(err, -EINVAL);
+	pmem = VA_IN_IVSHMEM_RANGE(thd_header);
 	if (pmem) {
 		assert(lid >= LTBL_ENTS);
 		lid -= LTBL_ENTS;
@@ -267,7 +268,7 @@ thd_deactivate(struct captbl *ct, struct cap_captbl *dest_ct, unsigned long capi
 		 * release the kmem page.
 		 */
 		ret = kmem_deact_pre(thd_header, ct, pgtbl_cap,
-				     cosframe_addr, &pte, &old_v);
+				     cosframe_addr, &pte, &old_v, 0);
 		if (ret) cos_throw(err, ret);
 	} else {
 		/* more reference exists. */
@@ -291,7 +292,8 @@ thd_deactivate(struct captbl *ct, struct cap_captbl *dest_ct, unsigned long capi
 	if (thd->refcnt == 0) {
 		/* move the kmem for the thread to a location
 		 * in a pagetable as COSFRAME */
-		ret = kmem_deact_post(pte, old_v);
+		/* thd always use local memory */
+		ret = kmem_deact_post(pte, old_v, 0);
 		if (ret) cos_throw(err, ret);
 	}
 

@@ -15,6 +15,7 @@
 #include "retype_tbl.h"
 #include "liveness_tbl.h"
 #include "chal/defs.h"
+#include "non_CC.h"
 
 #ifndef LINUX_TEST
 #include "chal.h"
@@ -260,6 +261,12 @@ pgtbl_quie_check(u32_t orig_v, int pmem)
 			printk("kern tsc %llu, lid %d, last flush %llu\n", ts, lid, tlb_quiescence[get_cpuid()].last_periodic_flush);
 			return -EQUIESCENCE;
 		}
+		if (pmem) {
+			if (!cos_quiescence_check(0, ts, 0, NON_CC_QUIESCENCE))    {
+				printk("non cc flush kern tsc %llu, lid %d\n", ts, lid);
+				return -EQUIESCENCE;
+			}
+		}
 	}
 
 	return 0;
@@ -272,7 +279,7 @@ pgtbl_quie_check(u32_t orig_v, int pmem)
 static int
 pgtbl_mapping_add(pgtbl_t pt, u32_t addr, u32_t page, u32_t flags)
 {
-	int ret = 0;
+	int ret = 0, pmem = PA_IN_IVSHMEM_RANGE(pt);
 	struct ert_intern *pte;
 	u32_t orig_v, accum = 0;
 
@@ -405,7 +412,7 @@ pgtbl_mapping_del(pgtbl_t pt, u32_t addr, u32_t liv_id)
 
 	assert(pt);
 	assert((PGTBL_FLAG_MASK & addr) == 0);
-	if (pmem) assert(PA_IN_IVSHMEM_RANGE((u32_t)pt));
+	if (pmem) assert(PA_IN_IVSHMEM_RANGE(pt));
 
 	/* In pgtbl, we have only 20bits for liv id. */
 	liv_id -= (pmem*LTBL_ENTS);
@@ -520,6 +527,7 @@ pgtbl_get_cosframe(pgtbl_t pt, vaddr_t frame_addr, paddr_t *cosframe)
 	u32_t flags;
 	unsigned long *pte;
 	paddr_t v;
+	int pmem = PA_IN_IVSHMEM_RANGE(pt);
 
 	pte = pgtbl_lkup_pte(pt, frame_addr, &flags);
 	if (!pte) return -EINVAL;

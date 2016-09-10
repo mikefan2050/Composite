@@ -45,6 +45,7 @@ __cap_capactivate_post(struct cap_header *h, cap_t type)
 	/* u32_t old_v, new_v; */
 	/* struct cap_header *local; */
 
+	if(VA_IN_IVSHMEM_RANGE(h)) cos_wb_cache(h);
 	cos_mem_fence();
 
 	/* FIXME: the following is done in captbl_add now, which is
@@ -103,7 +104,7 @@ cap_cons(struct captbl *t, capid_t capto, capid_t capsub, capid_t expandid)
 	unsigned long *intern;
 	u32_t depth;
 	cap_t cap_type;
-	int ret = 0;
+	int ret = 0, pmem_cap = VA_IN_IVSHMEM_RANGE(t), pmem_pg;
 
 	if (unlikely(capto == capsub)) return -EINVAL;
 	ct = (struct cap_captbl *)captbl_lkup(t, capto);
@@ -113,6 +114,10 @@ cap_cons(struct captbl *t, capid_t capto, capid_t capsub, capid_t expandid)
 	ctsub = (struct cap_captbl *)captbl_lkup(t, capsub);
 	if (unlikely(!ctsub))                    return -ENOENT;
 	if (unlikely(ctsub->h.type != cap_type)) return -EINVAL;
+	if (pmem_cap) {
+		assert(VA_IN_IVSHMEM_RANGE(ct));
+		assert(VA_IN_IVSHMEM_RANGE(ctsub));
+	}
 
 	depth = ctsub->lvl;
 	if (depth == 0) return -EINVAL; /* subtree must not have a root */
@@ -124,6 +129,7 @@ cap_cons(struct captbl *t, capid_t capto, capid_t capsub, capid_t expandid)
 		/* FIXME: we need to ensure TLB quiescence for pgtbl cons/decons! */
 		u32_t flags = 0, old_pte, new_pte, old_v, refcnt_flags;
 
+		pmem_pg = PA_IN_IVSHMEM_RANGE(((struct cap_pgtbl *)ct)->pgtbl);
 		intern = pgtbl_lkup_lvl(((struct cap_pgtbl *)ct)->pgtbl, expandid, &flags, ct->lvl, depth);
 		if (!intern)                  return -ENOENT;
 		old_pte = *intern;
@@ -236,15 +242,18 @@ cap_kmem_freeze(struct captbl *t, capid_t target_cap)
 {
 	struct cap_header *ch;
 	u32_t l;
-	int ret;
+	int ret, pmem_cap, pmem_mem;
 
 	ch = captbl_lkup(t, target_cap);
 	if (!ch) return -EINVAL;
+	pmem_cap = VA_IN_IVSHMEM_RANGE(ch);
 
 	/* Only memory for captbl and pgtbl needs to be frozen before
 	 * deactivation. */
 	if (ch->type == CAP_CAPTBL) {
 		struct cap_captbl *ct = (struct cap_captbl *)ch;
+		pmem_mem = VA_IN_IVSHMEM_RANGE(ct->captbl);
+		if (pmem_cap) assert(pmem_mem);
  		l = ct->refcnt_flags;
 
 		if ((l & CAP_REFCNT_MAX) > 1 || l & CAP_MEM_FROZEN_FLAG) return -EINVAL;
@@ -256,6 +265,8 @@ cap_kmem_freeze(struct captbl *t, capid_t target_cap)
 		if (ret != CAS_SUCCESS) return -ECASFAIL;
 	} else if (ch->type == CAP_PGTBL) {
 		struct cap_pgtbl *pt = (struct cap_pgtbl *)ch;
+		pmem_mem = VA_IN_IVSHMEM_RANGE(pt->pgtbl);
+		if (pmem_cap) assert(pmem_mem);
 		l = pt->refcnt_flags;
 		if ((l & CAP_REFCNT_MAX) > 1 || l & CAP_MEM_FROZEN_FLAG) return -EINVAL;
 
@@ -288,7 +299,7 @@ kmem_page_scan(void *obj_vaddr, const int size)
 }
 
 int kmem_deact_pre(struct cap_header *ch, struct captbl *ct, capid_t pgtbl_cap,
-	       capid_t cosframe_addr, unsigned long **p_pte, unsigned long *v);
-int kmem_deact_post(unsigned long *pte, unsigned long old_v);
+	       capid_t cosframe_addr, unsigned long **p_pte, unsigned long *v, int pmem);
+int kmem_deact_post(unsigned long *pte, unsigned long old_v, int pmem);
 
 #endif	/* CAP_OPS */
