@@ -112,6 +112,7 @@ ivshmem_boot_init(struct captbl *ct)
 		pmem_glb_retype_tbl = meta_page->pmem_glb_retype_tbl;
 		pmem_retype_tbl = meta_page->pmem_retype_tbl;
 		cc_quiescence = meta_page->pmem_cc_quiescence;
+		global_tsc = &meta_page->global_tsc;
 		printk("node %d ivshmem kernel done!\n", cur_node);
 		return ;
 	}
@@ -149,6 +150,8 @@ ivshmem_boot_init(struct captbl *ct)
 	meta_page->pmem_cc_quiescence = (struct non_cc_quiescence *)ivshmem_boot_alloc(IVSHMEM_N_MEM_SETS*sizeof(struct non_cc_quiescence));
 	cc_quiescence = meta_page->pmem_cc_quiescence;
 	memset(cc_quiescence, 0, IVSHMEM_N_MEM_SETS*sizeof(struct non_cc_quiescence));
+
+	global_tsc = &meta_page->global_tsc;
 
 	for (i = 1; i <= NUM_NODE; i++) {
 		pgtbl = (pgtbl_t)ivshmem_boot_alloc(PAGE_SIZE);
