@@ -135,8 +135,6 @@ static inline unsigned long name##_maxid(void)				\
 { return __ert_maxid(depth, order, intern_sz, last_order, last_sz, initval, initfn, getfn, isnullfn, setfn, allocfn, setleaffn, getleaffn, resolvefn); } \
 static inline u32_t name##_maxdepth(void) { return (u32_t)depth; }	\
 	\
-static struct structname *name##_non_cc_alloc(void *memctxt)                   \
-{ return (struct structname*)ert_non_cc_alloc(memctxt, depth, order, intern_sz, last_order, last_sz, initval, initfn, getfn, isnullfn, setfn, allocfn, setleaffn, getleaffn, resolvefn); } \
 static inline void *name##_non_cc_lkup(struct structname *v, unsigned long id)	\
 { unsigned long a; return __ert_non_cc_lookup((struct ert*)v, id, 0, depth, &a, depth, order, intern_sz, last_order, last_sz, initval, initfn, getfn, isnullfn, setfn, allocfn, setleaffn, getleaffn, resolvefn); } \
 static inline void *name##_non_cc_lkupa(struct structname *v, unsigned long id, void *accum)  \
@@ -144,13 +142,7 @@ static inline void *name##_non_cc_lkupa(struct structname *v, unsigned long id, 
 static inline void *name##_non_cc_lkupan(struct structname *v, unsigned long id, u32_t dlimit, void *accum) \
 { return __ert_non_cc_lookup((struct ert*)v, id, 0, dlimit, accum, depth, order, intern_sz, last_order, last_sz, initval, initfn, getfn, isnullfn, setfn, allocfn, setleaffn, getleaffn, resolvefn); } \
 static inline void *name##_non_cc_lkupani(struct structname *v, unsigned long id, u32_t dstart, u32_t dlimit, void *accum) \
-{ return __ert_non_cc_lookup((struct ert*)v, id, dstart, dlimit, accum, depth, order, intern_sz, last_order, last_sz, initval, initfn, getfn, isnullfn, setfn, allocfn, setleaffn, getleaffn, resolvefn); } \
-static inline int name##_non_cc_expandni(struct structname *v, unsigned long id, u32_t dstart, u32_t dlimit, void *accum, void *memctxt, void *data) \
-{ return __ert_non_cc_expand((struct ert*)v, id, dstart, dlimit, accum, memctxt, data, depth, order, intern_sz, last_order, last_sz, initval, initfn, getfn, isnullfn, setfn, allocfn, setleaffn, getleaffn, resolvefn); } \
-static inline int name##_non_cc_expandn(struct structname *v, unsigned long id, u32_t dlimit, void *accum, void *memctxt, void *data) \
-{ return __ert_non_cc_expand((struct ert*)v, id, 0, dlimit, accum, memctxt, data, depth, order, intern_sz, last_order, last_sz, initval, initfn, getfn, isnullfn, setfn, allocfn, setleaffn, getleaffn, resolvefn); } \
-static inline int name##_non_cc_expand(struct structname *v, unsigned long id, void *accum, void *memctxt, void *data) \
-{ return __ert_non_cc_expand((struct ert*)v, id, 0, depth, accum, memctxt, data, depth, order, intern_sz, last_order, last_sz, initval, initfn, getfn, isnullfn, setfn, allocfn, setleaffn, getleaffn, resolvefn); } 
+{ return __ert_non_cc_lookup((struct ert*)v, id, dstart, dlimit, accum, depth, order, intern_sz, last_order, last_sz, initval, initfn, getfn, isnullfn, setfn, allocfn, setleaffn, getleaffn, resolvefn); } 
 
 #define ERT_CREATE_DEF(name, depth, order, last_order, last_sz, allocfn) \
 ERT_CREATE(name, name##_ert, depth, order, sizeof(int*), last_order, last_sz, NULL, ert_definit, ert_defget, ert_defisnull, ert_defset, allocfn, ert_defsetleaf, ert_defgetleaf, ert_defresolve)
@@ -190,28 +182,6 @@ __ert_init(struct ert_intern *vi, int isleaf, ERT_CONST_PARAMS)
 	}
 }
 
-static inline void
-__ert_non_cc_init(struct ert_intern *vi, int isleaf, ERT_CONST_PARAMS)
-{
-	int i, base, sz;
-	struct ert_intern *t;
-	ERT_CONSTS_DEWARN;
-
-	assert(vi);
-	if (!isleaf) {
-		base = 1<<order;
-		sz   = intern_sz;
-	} else {
-		base = 1<<last_order;
-		sz   = last_sz;
-	}
-	for (i = 0 ; i < base ; i++) {
-		t = (void*)(((char*)vi) + (sz * i));
-		initfn(t, isleaf);
-	}
-	clflush_buffer_add(vi, t);
-}
-
 static struct ert *
 ert_alloc(void *memctxt, ERT_CONST_PARAMS)
 {
@@ -226,25 +196,6 @@ ert_alloc(void *memctxt, ERT_CONST_PARAMS)
 	else           v = allocfn(memctxt, (1<<last_order) * last_sz, 1);
 	if (NULL == v) return NULL;
 	__ert_init(v->vect, depth == 1, ERT_CONST_ARGS);
-
-	setfn(&e, v, &accum, depth == 1);
-	return (struct ert *)e.next;
-}
-
-static struct ert *
-ert_non_cc_alloc(void *memctxt, ERT_CONST_PARAMS)
-{
-	struct ert *v;
-	struct ert_intern e;
-	unsigned long accum = 0;
-
-	/* Make sure the id size can be represented on our system */
-	assert(((order * (depth-1)) + last_order) < (sizeof(unsigned long)*8));
-	assert(depth >= 1);
-	if (depth > 1) v = allocfn(memctxt, (1<<order) * intern_sz, 0);
-	else           v = allocfn(memctxt, (1<<last_order) * last_sz, 1);
-	if (NULL == v) return NULL;
-	__ert_non_cc_init(v->vect, depth == 1, ERT_CONST_ARGS);
 
 	setfn(&e, v, &accum, depth == 1);
 	return (struct ert *)e.next;
@@ -318,7 +269,7 @@ __ert_lookup(struct ert *v, unsigned long id, u32_t dstart, u32_t dlimit, void *
 static inline CFORCEINLINE void *
 __ert_non_cc_lookup(struct ert *v, unsigned long id, u32_t dstart, u32_t dlimit, void *accum, ERT_CONST_PARAMS)
 {
-	struct ert_intern r, *n;
+	struct ert_intern r, *n, *t;
 	u32_t i, limit;
 
 	assert(v);
@@ -337,12 +288,23 @@ __ert_non_cc_lookup(struct ert *v, unsigned long id, u32_t dstart, u32_t dlimit,
 		}
 		n = __ert_walk(n, id, accum, depth-i, ERT_CONST_ARGS);
 	}
+	if (unlikely(isnullfn(n, accum, 0))) {
+		cos_flush_cache(n);
+	}
 
 	if (i == depth &&
 	    unlikely(!resolvefn(n, accum, 1, last_order, last_sz))) return NULL;
 	if (i < depth  &&
 	    unlikely(!resolvefn(n, accum, 0, order, intern_sz))) return NULL;
-	if (dlimit == depth+1) n = getleaffn(n, accum);
+	if (dlimit == depth+1) {
+		t = getleaffn(n, accum);
+		if (!t) {
+			cos_flush_cache(n);
+			n = getleaffn(n, accum);
+		} else {
+			n = t;
+		}
+	}
 
 	return n;
 }
@@ -391,47 +353,6 @@ __ert_expand(struct ert *v, unsigned long id, u32_t dstart, u32_t dlimit, void *
 		if (data != initval && !isnullfn(n, accum, 0)) return 1;
 
 		if (setleaffn(n, data)) return -ECASFAIL;
-	}
-	return 0;
-}
-
-static inline int
-__ert_non_cc_expand(struct ert *v, unsigned long id, u32_t dstart, u32_t dlimit, void *accum, void *memctxt, void *data, ERT_CONST_PARAMS)
-{
-	struct ert_intern r, *n, *new;
-	u32_t i, limit;
-
-	assert(v);
-	assert(id < __ert_maxid(ERT_CONST_ARGS));
-	assert(dlimit <= depth+1); /* cannot expand past leaf */
-	assert(dstart <= dlimit);
-
-	r.next = v->vect;
-	n      = &r;
-	limit  = dlimit < depth ? dlimit : depth;
-	for (i = dstart ; i < limit-1 ; i++) {
-		n = __ert_walk(n, id, accum, depth-i, ERT_CONST_ARGS);
-		if (!isnullfn(n, accum, 0)) {
-			cos_flush_cache(n);
-			if (!isnullfn(n, accum, 0)) continue;
-		}
-
-		/* expand via memory allocation */
-		if (i+2 < depth) new = allocfn(memctxt, (1<<order) * intern_sz, 0);
-		else             new = allocfn(memctxt, (1<<last_order) * last_sz, 1);
-
-		if (unlikely(!new)) return -1;
-		__ert_non_cc_init(new, i+2 >= depth, ERT_CONST_ARGS);
-		setfn(n, new, accum, 0);
-		clflush_buffer_add(n, n+1);
-	}
-	if (dlimit == depth+1) {
-		n = __ert_walk(n, id, accum, depth-i, ERT_CONST_ARGS);
-		/* don't overwrite a value, unless we want to set it to the initval */
-		if (data != initval && !isnullfn(n, accum, 0)) return 1;
-
-		if (setleaffn(n, data)) return -ECASFAIL;
-		clflush_buffer_add(n, n+1);
 	}
 	return 0;
 }

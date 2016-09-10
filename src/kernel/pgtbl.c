@@ -15,8 +15,13 @@ pgtbl_kmem_act(pgtbl_t pt, u32_t addr, unsigned long *kern_addr, unsigned long *
 	assert((PGTBL_FLAG_MASK & addr) == 0);
 
 	/* get the pte */
-	pte = (struct ert_intern *)__pgtbl_lkupan((pgtbl_t)((u32_t)pt|PGTBL_PRESENT), 
+	if (pmem_cap) {
+		pte = (struct ert_intern *)__pgtbl_non_cc_lkupan((pgtbl_t)((u32_t)pt|PGTBL_PRESENT), 
 						  addr >> PGTBL_PAGEIDX_SHIFT, PGTBL_DEPTH, &accum);
+	} else {
+		pte = (struct ert_intern *)__pgtbl_lkupan((pgtbl_t)((u32_t)pt|PGTBL_PRESENT), 
+						  addr >> PGTBL_PAGEIDX_SHIFT, PGTBL_DEPTH, &accum);
+	}
 	if (unlikely(!pte))  return -ENOENT;
 	if (unlikely(__pgtbl_isnull(pte, 0, 0))) return -ENOENT;
 
@@ -99,6 +104,12 @@ cap_memactivate(struct captbl *ct, struct cap_pgtbl *pt, capid_t frame_cap, capi
 	if (!pte) return -EINVAL;
 	orig_v = *pte;
 
+	if (pmem) {
+		if (!(orig_v & PGTBL_COSFRAME) || (orig_v & PGTBL_COSKMEM)) {
+			cos_flush_cache(pte);
+			orig_v = *pte;
+		}
+	}
 	if (!(orig_v & PGTBL_COSFRAME) || (orig_v & PGTBL_COSKMEM)) return -EPERM;
 
 	assert(!(orig_v & PGTBL_QUIESCENCE));

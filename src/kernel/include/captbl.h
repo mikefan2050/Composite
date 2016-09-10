@@ -225,8 +225,15 @@ __captbl_header_validate(struct cap_header *h, cap_sz_t sz)
 static inline void *
 captbl_lkup_lvl(struct captbl *t, capid_t cap, u32_t start_lvl, u32_t end_lvl)
 {
+	struct cap_header *ch;
+
 	cap &= __captbl_maxid() - 1; /* Assume: 2s complement math */
-	return __captbl_lkupani(t, cap, start_lvl, end_lvl, NULL);
+	if (VA_IN_IVSHMEM_RANGE(t)) {
+		ch = __captbl_non_cc_lkupani(t, cap, start_lvl, end_lvl, NULL);
+	} else {
+		ch = __captbl_lkupani(t, cap, start_lvl, end_lvl, NULL);
+	}
+	return (void *)ch;
 }
 
 /*
@@ -265,7 +272,8 @@ captbl_add(struct captbl *t, capid_t cap, cap_t type, int *retval)
 	if (unlikely(sz == CAP_SZ_ERR)) cos_throw(err, -EINVAL);
 	if (unlikely(cap >= __captbl_maxid())) cos_throw(err, -EINVAL);
 
-	p = __captbl_lkupan(t, cap, CAPTBL_DEPTH, NULL);
+	if (pmem) p = __captbl_non_cc_lkupan(t, cap, CAPTBL_DEPTH, NULL);
+	else p = __captbl_lkupan(t, cap, CAPTBL_DEPTH, NULL);
 	if (unlikely(!p)) cos_throw(err, -EPERM);
 
 	h = (struct cap_header *)CT_MSK(p, CACHELINE_ORDER);
@@ -360,10 +368,14 @@ captbl_del(struct captbl *t, capid_t cap, cap_t type, livenessid_t lid)
 	int ret = 0, off;
 
 	if (unlikely(cap >= __captbl_maxid())) cos_throw(err, -EINVAL);
-	p = __captbl_lkupan(t, cap, CAPTBL_DEPTH, NULL);
+	if (pmem) p = __captbl_non_cc_lkupan(t, cap, CAPTBL_DEPTH, NULL);
+	else p = __captbl_lkupan(t, cap, CAPTBL_DEPTH, NULL);
 
 	if (unlikely(!p)) cos_throw(err, -EPERM);
+	th =  __captbl_getleaf((void*)p, NULL);
+	if (pmem && th != p) cos_flush_cache(p);
 	if (p != __captbl_getleaf((void*)p, NULL)) cos_throw(err, -EINVAL);
+
 	if (p->type != type) cos_throw(err, -EINVAL);
 
 	h   = (struct cap_header *)CT_MSK(p, CACHELINE_ORDER);
@@ -438,7 +450,8 @@ captbl_prune(struct captbl *t, capid_t cap, u32_t depth, int *retval)
 
 	if (unlikely(cap   >= __captbl_maxid() ||
 		     depth >= captbl_maxdepth())) cos_throw(err, -EINVAL);
-	intern = __captbl_lkupan(t, cap, depth, NULL);
+	if (pmem) intern = __captbl_non_cc_lkupan(t, cap, depth, NULL);
+	else intern = __captbl_lkupan(t, cap, depth, NULL);
 	if (unlikely(!intern)) cos_throw(err, -EPERM);
 	p = *intern;
 	new = (unsigned long)CT_DEFINITVAL;

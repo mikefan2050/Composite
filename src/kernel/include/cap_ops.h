@@ -127,6 +127,10 @@ cap_cons(struct captbl *t, capid_t capto, capid_t capsub, capid_t expandid)
 		intern = pgtbl_lkup_lvl(((struct cap_pgtbl *)ct)->pgtbl, expandid, &flags, ct->lvl, depth);
 		if (!intern)                  return -ENOENT;
 		old_pte = *intern;
+		if (pmem_pg && pgtbl_ispresent(old_pte)) {
+			cos_flush_cache(intern);
+			old_pte = *intern;
+		}
 		if (pgtbl_ispresent(old_pte)) return -EPERM;
 
 		old_v = refcnt_flags = ((struct cap_pgtbl *)ctsub)->refcnt_flags;

@@ -284,11 +284,20 @@ pgtbl_mapping_add(pgtbl_t pt, u32_t addr, u32_t page, u32_t flags)
 	assert((PGTBL_FRAME_MASK & flags) == 0);
 
 	/* get the pte */
-	pte = (struct ert_intern *)__pgtbl_lkupan((pgtbl_t)((u32_t)pt|PGTBL_PRESENT),
+	if (pmem) {
+		pte = (struct ert_intern *)__pgtbl_non_cc_lkupan((pgtbl_t)((u32_t)pt|PGTBL_PRESENT),
 						  addr >> PGTBL_PAGEIDX_SHIFT, PGTBL_DEPTH, &accum);
+	} else {
+		pte = (struct ert_intern *)__pgtbl_lkupan((pgtbl_t)((u32_t)pt|PGTBL_PRESENT),
+						  addr >> PGTBL_PAGEIDX_SHIFT, PGTBL_DEPTH, &accum);
+	}
 	if (!pte) return -ENOENT;
 	orig_v = (u32_t)(pte->next);
 
+	if (pmem && (orig_v & (PGTBL_PRESENT | PGTBL_COSFRAME))) {
+		cos_flush_cache(pte);
+		orig_v = (u32_t)(pte->next);
+	}
 	if (orig_v & PGTBL_PRESENT)  return -EEXIST;
 	if (orig_v & PGTBL_COSFRAME) return -EPERM;
 
@@ -409,8 +418,15 @@ pgtbl_mapping_del(pgtbl_t pt, u32_t addr, u32_t liv_id)
 	if (unlikely(ret)) goto done;
 
 	/* get the pte */
-	pte = (struct ert_intern *)__pgtbl_lkupan((pgtbl_t)((u32_t)pt|PGTBL_PRESENT),
+	if (pmem) {
+		pte = (struct ert_intern *)__pgtbl_non_cc_lkupan((pgtbl_t)((u32_t)pt|PGTBL_PRESENT),
 						  addr >> PGTBL_PAGEIDX_SHIFT, PGTBL_DEPTH, &accum);
+		orig_v = (u32_t)(pte->next);
+		if (!(orig_v & PGTBL_PRESENT) || (orig_v & PGTBL_COSFRAME)) cos_flush_cache(pte);
+	} else {
+		pte = (struct ert_intern *)__pgtbl_lkupan((pgtbl_t)((u32_t)pt|PGTBL_PRESENT),
+						  addr >> PGTBL_PAGEIDX_SHIFT, PGTBL_DEPTH, &accum);
+	}
 	orig_v = (u32_t)(pte->next);
 	if (!(orig_v & PGTBL_PRESENT)) return -EEXIST;
 	if (orig_v & PGTBL_COSFRAME)   return -EPERM;
@@ -442,8 +458,18 @@ pgtbl_mapping_del_direct(pgtbl_t pt, u32_t addr)
 }
 
 static void *pgtbl_lkup_lvl(pgtbl_t pt, u32_t addr, u32_t *flags, u32_t start_lvl, u32_t end_lvl)
-{ return __pgtbl_lkupani((pgtbl_t)((unsigned long)pt | PGTBL_PRESENT),
-			 addr >> PGTBL_PAGEIDX_SHIFT, start_lvl, end_lvl, flags); }
+{
+	int pmem = PA_IN_IVSHMEM_RANGE(pt);
+	assert(!VA_IN_IVSHMEM_RANGE(pt));
+	
+	if (pmem) {
+		return __pgtbl_non_cc_lkupani((pgtbl_t)((unsigned long)pt | PGTBL_PRESENT),
+			 addr >> PGTBL_PAGEIDX_SHIFT, start_lvl, end_lvl, flags);
+	} else {
+		return __pgtbl_lkupani((pgtbl_t)((unsigned long)pt | PGTBL_PRESENT),
+			 addr >> PGTBL_PAGEIDX_SHIFT, start_lvl, end_lvl, flags);
+	}
+}
 
 static int pgtbl_ispresent(u32_t flags)
 { return flags & (PGTBL_PRESENT|PGTBL_COSFRAME); }
@@ -452,9 +478,16 @@ static unsigned long *
 pgtbl_lkup(pgtbl_t pt, u32_t addr, u32_t *flags)
 {
 	void *ret;
+	int pmem = PA_IN_IVSHMEM_RANGE(pt);
+	assert(!VA_IN_IVSHMEM_RANGE(pt));
 
-	ret = __pgtbl_lkupan((pgtbl_t)((unsigned long)pt | PGTBL_PRESENT),
+	if (pmem) {
+		ret = __pgtbl_non_cc_lkupan((pgtbl_t)((unsigned long)pt | PGTBL_PRESENT),
 			     addr >> PGTBL_PAGEIDX_SHIFT, PGTBL_DEPTH+1, flags);
+	} else {
+		ret = __pgtbl_lkupan((pgtbl_t)((unsigned long)pt | PGTBL_PRESENT),
+			     addr >> PGTBL_PAGEIDX_SHIFT, PGTBL_DEPTH+1, flags);
+	}
 	if (!pgtbl_ispresent(*flags)) return NULL;
 	return ret;
 }
@@ -463,8 +496,16 @@ pgtbl_lkup(pgtbl_t pt, u32_t addr, u32_t *flags)
 static unsigned long *
 pgtbl_lkup_pte(pgtbl_t pt, u32_t addr, u32_t *flags)
 {
-	return __pgtbl_lkupan((pgtbl_t)((unsigned long)pt | PGTBL_PRESENT),
+	int pmem = PA_IN_IVSHMEM_RANGE(pt);
+	assert(!VA_IN_IVSHMEM_RANGE(pt));
+
+	if (pmem) {
+		return __pgtbl_non_cc_lkupan((pgtbl_t)((unsigned long)pt | PGTBL_PRESENT),
 			      addr >> PGTBL_PAGEIDX_SHIFT, PGTBL_DEPTH, flags);
+	} else {
+		return __pgtbl_lkupan((pgtbl_t)((unsigned long)pt | PGTBL_PRESENT),
+			      addr >> PGTBL_PAGEIDX_SHIFT, PGTBL_DEPTH, flags);
+	}
 }
 
 /* FIXME: remove this function.  Why do we need a paddr lookup??? */
@@ -487,6 +528,10 @@ pgtbl_get_cosframe(pgtbl_t pt, vaddr_t frame_addr, paddr_t *cosframe)
 	if (!pte) return -EINVAL;
 
 	v = *pte;
+	if (pmem && !(v & PGTBL_COSFRAME)) {
+		cos_flush_cache(pte);
+		v = *pte;
+	}
 	if (!(v & PGTBL_COSFRAME)) return -EINVAL;
 
 	*cosframe = v & PGTBL_FRAME_MASK;
