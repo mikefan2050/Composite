@@ -14,7 +14,6 @@
 #include "shared/util.h"
 #include "ertrie.h"
 
-#define LTBL_ENT_ORDER 20
 #define LTBL_ENTS (1<<LTBL_ENT_ORDER)
 
 #ifndef rdtscll
