@@ -20,6 +20,7 @@
 
 #define ITER 1000000
 #define CACHELINE_SIZE  64
+#define PACKET_SIZE (16*PAGE_SIZE)
 
 enum boot_pmem_captbl_layout {
 	BOOT_CLIENT           = 2,
@@ -83,6 +84,22 @@ non_cc_store_int(int *target, int value)
 {
 	*target = value;
 	cos_wb_cache(target);
+}
+
+static inline void
+clflush_range(void *s, void *e)
+{
+	s = (void *)round_to_cacheline(s);
+	e = (void *)round_to_cacheline(e);
+	for(; s<=e; s += CACHE_LINE) cos_flush_cache(s);
+}
+
+static inline void
+clwb_range(void *s, void *e)
+{
+	s = (void *)round_to_cacheline(s);
+	e = (void *)round_to_cacheline(e);
+	for(; s<=e; s += CACHE_LINE) cos_wb_cache(s);
 }
 
 #endif /* MICRO_BOOTER_H */

@@ -23,5 +23,6 @@ void *alias_pages(int node, void *addr, int size);
 void free_pages(void *addr, int n);
 int mem_create(void *addr, int size);
 void *mem_retrieve(int memid, int node);
+struct mem_meta *mem_lookup(int memid);
 
 #endif /* MEM_MGR_H */

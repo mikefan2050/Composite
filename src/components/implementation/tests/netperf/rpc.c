@@ -37,8 +37,14 @@ rpc_send(int node_mem, int recv_node, int size)
 	int caller = node_mem & 0xFFFF, memid = node_mem >> 16;
 	int ret;
 	struct msg_meta meta;
+	struct mem_meta * mem;
+	void *addr;
 
 //	printc("rpc send sender %d to %d id %d sz %d\n", caller, recv_node, memid, size);
+	mem = mem_lookup(memid);
+	assert(size <= mem->size);
+	addr = mem->addr;
+	clwb_range(addr, addr+size);
 	meta.mem_id = memid;
 	meta.size   = size;
 	ret = msg_enqueue(&global_msg_pool.nodes[recv_node].recv[caller], &meta);
@@ -52,6 +58,8 @@ rpc_recv(int node_mem, int spin)
 	volatile struct recv_ret *ret = (struct recv_ret *)ret_page[caller].addr;
 	int deq, i;
 	struct msg_meta meta;
+	struct mem_meta * mem;
+	void *addr;
 
 //	printc("rpc recv node %d\n", caller);
 	do {
@@ -62,6 +70,10 @@ rpc_recv(int node_mem, int spin)
 				ret->size   = meta.size;
 				ret->sender = i;
 				ret->addr   = mem_retrieve(meta.mem_id, caller);
+				mem         = mem_lookup(meta.mem_id);
+				assert(meta.size <= mem->size);
+				addr = mem->addr;
+				clflush_range(addr, addr+size);
 				return ret_page[caller].dst;
 			}
 		}

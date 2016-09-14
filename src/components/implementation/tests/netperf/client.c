@@ -1,7 +1,6 @@
 #include "client.h"
 #include "rpc.h"
 
-#define PACKET_SIZE PAGE_SIZE
 static void *buf;
 static int memid;
 

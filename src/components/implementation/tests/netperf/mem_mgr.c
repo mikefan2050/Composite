@@ -90,3 +90,8 @@ mem_retrieve(int memid, int node)
 	return meta->dest[node];
 }
 
+struct mem_meta *
+mem_lookup(int memid)
+{
+	return (struct mem_meta *)cmap_lookup(&mem_objs, memid);
+}
