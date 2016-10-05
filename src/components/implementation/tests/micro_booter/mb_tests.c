@@ -6,7 +6,6 @@ struct meta_header {
 };
 struct meta_header *ivshmem_meta;
 int cur_node;
-char flush[NUM_LINE*CACHE_LINE] CACHE_ALIGNED;
 static void
 thd_fn_perf(void *d)
 {
@@ -488,98 +487,6 @@ test_captbl_expand(void)
 	PRINTC("Captbl expand SUCCESS.\n");
 }
 
-struct cos_compinfo glb_comp_info;
-void
-test_inv_global(void)
-{
-	pgtblcap_t glb_comp_pt;
-	captblcap_t glb_comp_ct;
-	compcap_t glb_comp;
-	sinvcap_t ic;
-	vaddr_t range, addr, src, dst;
-	unsigned int r, i;
-
-	printc("Test global memory invcation\n");
-	cos_meminfo_init(&booter_info.pmem_mi, BOOT_MEM_KM_BASE, IVSHMEM_UNTYPE_SIZE, BOOT_CAPTBL_PMEM_PT_BASE);
-	ivshmem_meta = cos_mem_alias_pmem(&booter_info, &booter_info, 0, 0);
-	printc("meta %x magic %s done %d\n", ivshmem_meta, ivshmem_meta->magic, ivshmem_meta->boot_done);
-
-	if (ivshmem_meta->boot_done) {
-		struct cos_compinfo temp;
-		cur_node = ivshmem_meta->boot_num++;
-		temp.captbl_cap = BOOT_CAPTBL_PMEM_CT_BASE;
-		glb_comp = cos_cap_cpy(&booter_info, &temp, CAP_CAPTBL, 0);
-		pmem_livenessid_frontier = IVSHMEM_LTBL_TOT_ENTS + cur_node*IVSHMEM_LTBL_NODE_RANGE;
-		goto inv;
-	}
-
-	cur_node = 0;
-	ivshmem_meta->boot_num = 1;
-	pmem_livenessid_frontier = IVSHMEM_LTBL_TOT_ENTS + cur_node*IVSHMEM_LTBL_NODE_RANGE;
-
-	glb_comp_ct = cos_captbl_alloc_ext(&booter_info, 1);
-	glb_comp_pt = cos_pgtbl_alloc_ext(&booter_info, 1);
-	glb_comp    = cos_comp_alloc_ext(&booter_info, glb_comp_ct, glb_comp_pt, NULL, 1);
-	for(i=1; i<NUM_NODE; i++) {
-		cos_cap_cpy_captbl_at(BOOT_CAPTBL_PMEM_CT_BASE+(i+1)*CAP32B_IDSZ, 0, BOOT_CAPTBL_SELF_CT, glb_comp);
-	}
-	cos_compinfo_init(&glb_comp_info, glb_comp_pt, glb_comp_ct, glb_comp, (vaddr_t)BOOT_MEM_VM_BASE, BOOT_CAPTBL_FREE, &booter_info);
-
-	range = (vaddr_t)cos_get_heap_ptr() - BOOT_MEM_VM_BASE;
-	assert(range > 0);
-	printc("\tMapping in Booter component's virtual memory (range:%lu)\n", range);
-	for (addr = 0 ; addr < range ; addr += PAGE_SIZE) {
-		src = (vaddr_t)cos_page_bump_alloc_ext(&booter_info, 1);
-		assert(src);
-
-		memcpy((void *)src, (void *)(BOOT_MEM_VM_BASE + addr), PAGE_SIZE);
-
-		dst = cos_mem_alias_ext(&glb_comp_info, &booter_info, src, 1);
-		assert(dst);
-	}
-
-	ivshmem_meta->boot_done = 1;
-
-inv:
-	ic = cos_sinv_alloc(&booter_info, glb_comp, (vaddr_t)__inv_test_serverfn);
-	assert(ic > 0);
-
-	r = call_cap_mb(ic, 1, 2, 3);
-	PRINTC("Return from invocation: %x (== DEADBEEF?)\n", r);
-	printc("Test global memory invcation DONE!!\n");
-	return ;
-}
-
-static void
-test_clflush_perf(void)
-{
-	unsigned long long s, e, read, modify, invalid;
-	int i, j;
-	char *ptr, c;
-
-	read = modify = invalid = 0;
-	for(i=0; i<ITER; i++) {
-		//read cache line
-		for(j=0; j<SIZE; j++) c = flush[j];
-		rdtscll(s);
-		for(ptr = flush; ptr<&flush[SIZE-1]; ptr += CACHE_LINE) cos_flush_cache(ptr);
-		rdtscll(e);
-		read += (e-s);
-		//modify cache line
-		for(j=0; j<SIZE; j++) flush[j] = '$';
-		rdtscll(s);
-		for(ptr = flush; ptr<&flush[SIZE-1]; ptr += CACHE_LINE) cos_flush_cache(ptr);
-		rdtscll(e);
-		modify += (e-s);
-		//invalid cache line
-		rdtscll(s);
-		for(ptr = flush; ptr<&flush[SIZE-1]; ptr += CACHE_LINE) cos_flush_cache(ptr);
-		rdtscll(e);
-		invalid += (e-s);
-	}
-	printc("tot itertion %d avg flush one line read %llu modify %llu invalid %llu\n", NUM_LINE*ITER, read/(NUM_LINE*ITER), modify/(NUM_LINE*ITER), invalid/(NUM_LINE*ITER));
-}
-
 void
 test_run(void)
 {
@@ -599,9 +506,7 @@ test_run(void)
 	test_async_endpoints();
 	test_async_endpoints_perf();
 
-	test_inv_global();
 	test_inv();
-	test_clflush_perf();
 	test_inv_perf();
 
 	test_captbl_expand();

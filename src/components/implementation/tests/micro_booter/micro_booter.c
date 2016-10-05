@@ -3,6 +3,7 @@
 struct cos_compinfo booter_info;
 thdcap_t termthd; 		/* switch to this to shutdown */
 unsigned long tls_test[TEST_NTHDS];
+char flush[NUM_LINE*CACHE_LINE] CACHE_ALIGNED;
 
 static void
 cos_llprint(char *s, int len)
@@ -51,6 +52,36 @@ void
 timer_detach(void)
 { cos_hw_detach(BOOT_CAPTBL_SELF_INITHW_BASE, HW_PERIODIC); }
 
+static void
+test_clflush_perf(void)
+{
+	unsigned long long s, e, read, modify, invalid;
+	int i, j;
+	char *ptr, c;
+
+	read = modify = invalid = 0;
+	for(i=0; i<ITER; i++) {
+		//read cache line
+		for(j=0; j<SIZE; j++) c = flush[j];
+		rdtscll(s);
+		for(ptr = flush; ptr<&flush[SIZE-1]; ptr += CACHE_LINE) cos_flush_cache(ptr);
+		rdtscll(e);
+		read += (e-s);
+		//modify cache line
+		for(j=0; j<SIZE; j++) flush[j] = '$';
+		rdtscll(s);
+		for(ptr = flush; ptr<&flush[SIZE-1]; ptr += CACHE_LINE) cos_flush_cache(ptr);
+		rdtscll(e);
+		modify += (e-s);
+		//invalid cache line
+		rdtscll(s);
+		for(ptr = flush; ptr<&flush[SIZE-1]; ptr += CACHE_LINE) cos_flush_cache(ptr);
+		rdtscll(e);
+		invalid += (e-s);
+	}
+	printc("tot itertion %d avg flush one line read %llu modify %llu invalid %llu\n", NUM_LINE*ITER, read/(NUM_LINE*ITER), modify/(NUM_LINE*ITER), invalid/(NUM_LINE*ITER));
+}
+
 void
 cos_init(void)
 {
@@ -62,6 +93,7 @@ cos_init(void)
 	assert(termthd);
 
 	PRINTC("\nMicro Booter started.\n");
+//	test_clflush_perf();
 	test_run();
 	PRINTC("\nMicro Booter done.\n");
 
