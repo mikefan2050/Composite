@@ -106,9 +106,11 @@ ivshmem_boot_init(struct captbl *ct)
 	struct captbl *pmem_ct;
 
 	non_cc_init();
+	ret = cos_cas((unsigned long *)&meta_page->node_num, 0, 1);
 	if (meta_page->node_num >= NUM_NODE) meta_page->kernel_done = 0;
-	if (meta_page->kernel_done) {
-		cur_node = meta_page->node_num++;
+	if (ret != CAS_SUCCESS) {
+		while (!meta_page->kernel_done) { ; }
+		cur_node = cos_faa(&meta_page->node_num, 1);
 		if (pgtbl_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_PMEM_PT_BASE, meta_page->pmem_pgd[cur_node], 0)) assert(0);
 		if (captbl_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_PMEM_CT_BASE, meta_page->pmem_ct[cur_node], 0)) assert(0);
 		__pmem_liveness_tbl = meta_page->pmem_liveness_tbl;
@@ -119,7 +121,8 @@ ivshmem_boot_init(struct captbl *ct)
 		return ;
 	}
 	cur_node = 0;
-	meta_page->node_num = 1;
+	meta_page->kernel_done = 0;
+	printk("ivshmem phy (%x, %x), vir (%x, %x)\n", ivshmem_phy_addr, ivshmem_phy_addr+IVSHMEM_TOT_SIZE, ivshmem_addr, ivshmem_addr+IVSHMEM_TOT_SIZE);
 
 	meta_page->pmem_liveness_tbl = (struct liveness_entry *)ivshmem_boot_alloc(sizeof(__liveness_tbl));
 	ltbl_init(meta_page->pmem_liveness_tbl);
@@ -154,14 +157,16 @@ ivshmem_boot_init(struct captbl *ct)
 		pgtbl = (pgtbl_t)chal_va2pa(pgtbl);
 		meta_page->pmem_pgd[i-1] = pgtbl;
 		if (pgtbl_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_PMEM_PT_BASE+i*CAP32B_IDSZ, pgtbl, 0)) assert(0);
-		ret = ivshmem_pgtbl_mappings_add(ct, BOOT_CAPTBL_PMEM_PT_BASE+i*CAP32B_IDSZ, BOOT_CAPTBL_KM_PTE, "untyped global memory", 
-				(void *)ivshmem_addr+IVSHMEM_UNTYPE_START+i*IVSHMEM_UNTYPE_SIZE, BOOT_MEM_KM_BASE, IVSHMEM_UNTYPE_SIZE, 0);
-		assert(ret == 0);
 
 		ret = ivshmem_pgtbl_mappings_add(ct, BOOT_CAPTBL_PMEM_PT_BASE+i*CAP32B_IDSZ, BOOT_CAPTBL_KM_PTE, "shared meta page", 
 				(void *)ivshmem_addr, 0, PAGE_SIZE, 1);
 		assert(ret == 0);
 	}
+
+	/* give all untyped memory to the booter node's booter */
+	ret = ivshmem_pgtbl_mappings_add(ct, BOOT_CAPTBL_PMEM_PT_BASE+CAP32B_IDSZ, BOOT_CAPTBL_KM_PTE, "untyped global memory", 
+			(void *)ivshmem_addr+IVSHMEM_UNTYPE_START, BOOT_MEM_KM_BASE, IVSHMEM_UNTYPE_SIZE, 0);
+	assert(ret == 0);
 
 	for (i = 1; i <= NUM_NODE; i++) {
 		captbl = (u8_t *)ivshmem_boot_alloc(PAGE_SIZE);

@@ -8,8 +8,6 @@
 #include <component.h>
 #include <non_CC.h>
 
-#define IVSHMEM_UNTYPE_START PGD_SIZE*8
-
 struct ivshmem_meta {
 	char magic[MAGIC_LEN];
 	int kernel_done, boot_done, node_num, boot_num;

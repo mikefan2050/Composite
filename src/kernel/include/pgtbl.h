@@ -464,7 +464,6 @@ pgtbl_mapping_del_direct(pgtbl_t pt, u32_t addr)
 static void *pgtbl_lkup_lvl(pgtbl_t pt, u32_t addr, u32_t *flags, u32_t start_lvl, u32_t end_lvl)
 {
 	int pmem = PA_IN_IVSHMEM_RANGE(pt);
-	assert(!VA_IN_IVSHMEM_RANGE(pt));
 	
 	if (pmem) {
 		return __pgtbl_non_cc_lkupani((pgtbl_t)((unsigned long)pt | PGTBL_PRESENT),
@@ -483,7 +482,6 @@ pgtbl_lkup(pgtbl_t pt, u32_t addr, u32_t *flags)
 {
 	void *ret;
 	int pmem = PA_IN_IVSHMEM_RANGE(pt);
-	assert(!VA_IN_IVSHMEM_RANGE(pt));
 
 	if (pmem) {
 		ret = __pgtbl_non_cc_lkupan((pgtbl_t)((unsigned long)pt | PGTBL_PRESENT),
@@ -501,7 +499,6 @@ static unsigned long *
 pgtbl_lkup_pte(pgtbl_t pt, u32_t addr, u32_t *flags)
 {
 	int pmem = PA_IN_IVSHMEM_RANGE(pt);
-	assert(!VA_IN_IVSHMEM_RANGE(pt));
 
 	if (pmem) {
 		return __pgtbl_non_cc_lkupan((pgtbl_t)((unsigned long)pt | PGTBL_PRESENT),
