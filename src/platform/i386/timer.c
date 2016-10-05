@@ -88,8 +88,8 @@ volatile struct hpet_timer {
 
 #define PICO_PER_MICRO           1000000UL
 #define FEMPTO_PER_PICO          1000UL
-#define TIMER_CALIBRATION_ITER   16
-#define TIMER_ERROR_BOUND_FACTOR 128
+#define TIMER_CALIBRATION_ITER   256
+#define TIMER_ERROR_BOUND_FACTOR 256
 static int timer_calibration_init = 1;
 static unsigned long timer_cycles_per_hpetcyc = TIMER_ERROR_BOUND_FACTOR;
 static unsigned long cycles_per_tick;
@@ -112,6 +112,17 @@ timer_cpu2hpet_cycles(u64_t cycles)
 	return cycles;
 }
 
+void
+timer_disable(timer_type_t timer_type)
+{
+	/* Disable timer interrupts */
+	*hpet_config ^= ~1;
+	hpet_timers[timer_type].config = 0;
+	/* Enable timer interrupts */
+	*hpet_config |= 1;
+}
+
+
 static void
 timer_calibration(void)
 {
@@ -125,12 +136,15 @@ timer_calibration(void)
 		assert(hpetcyc_per_tick);
 		timer_calibration_init   = 0;
 		cycles_per_tick          = (unsigned long)(tot / TIMER_CALIBRATION_ITER);
-		assert(cycles_per_tick > hpetcyc_per_tick);
+		//assert(cycles_per_tick > hpetcyc_per_tick);
 
 		/* Possibly significant rounding error here.  Bound by the factor */
 		timer_cycles_per_hpetcyc = (TIMER_ERROR_BOUND_FACTOR * cycles_per_tick) / hpetcyc_per_tick;
 		printk("Timer calibrated:\n\tCPU cycles per HPET tick: %ld\n\tHPET ticks in %d us: %ld\n",
 		       timer_cycles_per_hpetcyc/TIMER_ERROR_BOUND_FACTOR, TIMER_DEFAULT_US_INTERARRIVAL, hpetcyc_per_tick);
+
+		timer_disable(TIMER_PERIODIC);
+		timer_disable(TIMER_PERIODIC);
 	}
 	cnt++;
 }
