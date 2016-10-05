@@ -8,7 +8,7 @@ u64_t local_quiescence[NUM_NODE];
 u64_t *global_tsc, clflush_start;
 extern int ivshmem_pgd_idx, ivshmem_pgd_end;
 extern u32_t *boot_comp_pgd;
-int cur_pgd_idx, cur_pte_idx;
+int cur_pgd_idx, cur_pte_idx, npage_flush;
 
 static inline int
 __cc_quiescence_local_check(u64_t timestamp)
@@ -60,18 +60,21 @@ cos_cache_mandatory_flush(void)
 {
 	unsigned long *pte, page;
 	void *addr;
-	int i, end = cur_pte_idx+CC_PTE_NUM, ret = 1;
+	int i, j, ret = 0;
+	u32_t *kernel_pgtbl = (u32_t *)&boot_comp_pgd;
 
 	if (cur_pgd_idx == ivshmem_pgd_idx && !cur_pte_idx) {
 		non_cc_rdtscll(&clflush_start);
+		npage_flush = 0;
 	}
-	pte = chal_pa2va(boot_comp_pgd[cur_pgd_idx] & PGTBL_FRAME_MASK);
-	for(i=cur_pte_idx; i < (int)TOT_PTE_NUM && i < end; i++) {
+	pte = chal_pa2va(kernel_pgtbl[cur_pgd_idx] & PGTBL_FRAME_MASK);
+	for(i=cur_pte_idx, j=0; i < (int)TOT_PTE_NUM && j < (int)CC_PTE_NUM; i++, j++) {
 		page = pte[i];
 		if (page & PGTBL_ACCESSED) {
 			addr = chal_pa2va(page & PGTBL_FRAME_MASK);
 			cos_clflush_range(addr, addr+PAGE_SIZE);
 			pte[i] &= (~PGTBL_ACCESSED);
+			npage_flush++;
 		}
 	}
 	if (i == TOT_PTE_NUM) {
@@ -86,7 +89,7 @@ cos_cache_mandatory_flush(void)
 	if (cur_pgd_idx == ivshmem_pgd_idx && !cur_pte_idx) {
 		cc_quiescence[cur_node].last_mandatory_flush = clflush_start;
 		cos_wb_cache(&cc_quiescence[cur_node].last_mandatory_flush);
-		ret = 0;
+		ret = npage_flush;
 	}
 	return ret;
 }
@@ -96,4 +99,5 @@ non_cc_init(void)
 {
 	cur_pgd_idx = ivshmem_pgd_idx;
 	cur_pte_idx = 0;
+	npage_flush = 0;
 }
