@@ -1,7 +1,12 @@
 #include "micro_booter.h"
 #include "rpc.h"
-#include "client.h"
-#include "server.h"
+#include "bench.h"
+
+enum boot_pmem_captbl_layout {
+	BOOT_CLIENT           = 2,
+	BOOT_SERVER           = 4,
+	BOOT_PMEM_CAPTBL_FREE = round_up_to_pow2(BOOT_SERVER, CAPMAX_ENTRY_SZ)
+};
 
 struct meta_header *ivshmem_meta;
 int cur_node;
@@ -62,8 +67,8 @@ non_boot_node_init(void)
 static sinvcap_t
 boot_node_init(void)
 {
-	pgtblcap_t client_pt, server_pt, rpc_pt;
-	captblcap_t client_ct, server_ct, rpc_ct, rpc_pmem_pt;
+	pgtblcap_t client_pt, server_pt, rpc_pt, rpc_pmem_pt;
+	captblcap_t client_ct, server_ct, rpc_ct;
 	compcap_t client_comp, server_comp, rpc_comp;
 	struct cos_compinfo client_info, server_info, rpc_info;
 	vaddr_t range, addr, src, dst;
@@ -144,6 +149,7 @@ boot_node_init(void)
 	cos_cap_cpy_captbl_at(client_ct, RPC_REGISTER, BOOT_CAPTBL_SELF_CT, ic);
 	cos_cap_cpy_captbl_at(server_ct, RPC_REGISTER, BOOT_CAPTBL_SELF_CT, ic);
 	/* copy page table cap to mem_mgr */
+	cos_cap_cpy_captbl_at(rpc_ct, MEM_SELF_CT, BOOT_CAPTBL_SELF_CT, rpc_ct);
 	cos_cap_cpy_captbl_at(rpc_ct, MEM_SELF_PT, BOOT_CAPTBL_SELF_CT, rpc_pt);
 	cos_cap_cpy_captbl_at(rpc_ct, MEM_SELF_PMEM_PT, BOOT_CAPTBL_SELF_CT, rpc_pmem_pt);
 	cos_cap_cpy_captbl_at(rpc_ct, MEM_COMP_PT_BASE, BOOT_CAPTBL_SELF_CT, client_pt);
@@ -165,7 +171,9 @@ void
 cos_init(void)
 {
 	sinvcap_t inv_ic;
-	printc("local addr %x\n", &inv_ic);
+
+	while (!cos_hw_cycles_per_usec(BOOT_CAPTBL_SELF_INITHW_BASE)) ;
+	printc("\t%d cycles per microsecond\n", cos_hw_cycles_per_usec(BOOT_CAPTBL_SELF_INITHW_BASE));
 
 	cos_meminfo_init(&booter_info.mi, BOOT_MEM_KM_BASE, COS_MEM_KERN_PA_SZ, BOOT_CAPTBL_SELF_UNTYPED_PT);
 	cos_meminfo_init(&booter_info.pmem_mi, BOOT_MEM_KM_BASE, IVSHMEM_UNTYPE_SIZE, BOOT_CAPTBL_PMEM_PT_BASE);

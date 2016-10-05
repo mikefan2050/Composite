@@ -13,16 +13,16 @@ CMAP_CREATE_STATIC(mem_objs);
 CSLAB_CREATE(metas, sizeof(struct mem_meta));
 
 void
-mem_mgr_init(vaddr_t untype, int size)
+mem_mgr_init(vaddr_t untype, int size, vaddr_t vas_start)
 {
 	int i;
 
+	/* two mem_mgr may manages a same client, make sure they use different portion of client's virtual address space */
 	cos_meminfo_init(&men_mgr_info.mi, untype, size, MEM_SELF_PMEM_PT);
 	cos_meminfo_init(&men_mgr_info.pmem_mi, untype, size, MEM_SELF_PMEM_PT);
-	cos_compinfo_init(&men_mgr_info, MEM_SELF_PT, 0, 0, (vaddr_t)cos_get_heap_ptr()+PAGE_SIZE, 0, &men_mgr_info);
+	cos_compinfo_init(&men_mgr_info, MEM_SELF_PT, MEM_SELF_CT, 0, (vaddr_t)cos_get_heap_ptr()+PAGE_SIZE, MEM_CAPTBL_FREE, &men_mgr_info);
 	for(i=0; i<NUM_NODE; i++) {
-		cos_compinfo_init(&client_info[i], MEM_COMP_PT_BASE+i*CAP32B_IDSZ, 0, 0, 
-			(vaddr_t)cos_get_heap_ptr()+PAGE_SIZE, 0, &men_mgr_info);
+		cos_compinfo_init(&client_info[i], MEM_COMP_PT_BASE+i*CAP32B_IDSZ, 0, 0, vas_start, 0, &men_mgr_info);
 	}
 }
 
@@ -83,11 +83,11 @@ mem_retrieve(int memid, int node)
 
 	meta = (struct mem_meta *)cmap_lookup(&mem_objs, memid);
 	if (!meta->dest[node]) {
-		meta->dest[node] = alias_pages(node, (void *)meta->addr, meta->size/PAGE_SIZE);
+		meta->dest[node] = (vaddr_t)alias_pages(node, (void *)meta->addr, meta->size/PAGE_SIZE);
 		meta->refcnt++;
 	}
 
-	return meta->dest[node];
+	return (void *)meta->dest[node];
 }
 
 struct mem_meta *

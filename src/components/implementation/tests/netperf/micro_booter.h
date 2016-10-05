@@ -20,13 +20,8 @@
 
 #define ITER 1000000
 #define CACHELINE_SIZE  64
-#define PACKET_SIZE (16*PAGE_SIZE)
-
-enum boot_pmem_captbl_layout {
-	BOOT_CLIENT           = 2,
-	BOOT_SERVER           = 4,
-	BOOT_PMEM_CAPTBL_FREE = round_up_to_pow2(BOOT_SERVER, CAPMAX_ENTRY_SZ)
-};
+#define PACKET_SIZE (PAGE_SIZE)
+#define NON_CC_OP
 
 struct meta_header {
 	char magic[MAGIC_LEN];
@@ -75,7 +70,9 @@ int call_cap_mb(u32_t cap_no, int arg1, int arg2, int arg3)
 static inline int
 non_cc_load_int(int *target)
 {
+#ifdef NON_CC_OP
 	cos_flush_cache(target);
+#endif
 	return *target;
 }
 
@@ -83,14 +80,16 @@ static inline void
 non_cc_store_int(int *target, int value)
 {
 	*target = value;
+#ifdef NON_CC_OP
 	cos_wb_cache(target);
+#endif
 }
 
 static inline void
 clflush_range(void *s, void *e)
 {
 	s = (void *)round_to_cacheline(s);
-	e = (void *)round_to_cacheline(e);
+	e = (void *)round_to_cacheline(e-1);
 	for(; s<=e; s += CACHE_LINE) cos_flush_cache(s);
 }
 
@@ -98,7 +97,7 @@ static inline void
 clwb_range(void *s, void *e)
 {
 	s = (void *)round_to_cacheline(s);
-	e = (void *)round_to_cacheline(e);
+	e = (void *)round_to_cacheline(e-1);
 	for(; s<=e; s += CACHE_LINE) cos_wb_cache(s);
 }
 

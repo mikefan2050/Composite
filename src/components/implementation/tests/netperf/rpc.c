@@ -1,7 +1,7 @@
 #include "rpc.h"
 
 static struct msg_pool global_msg_pool;
-static struct shared_ret_page ret_page[NUM_NODE];
+static struct shared_page ret_page[NUM_NODE];
 
 void *
 rpc_create(int node_mem, int size)
@@ -11,7 +11,7 @@ rpc_create(int node_mem, int size)
 	volatile struct create_ret *ret = (struct create_ret *)ret_page[caller].addr;
 
 	printc("rpc create node %d\n", caller);
-	size  = round_to_page(size);
+	size  = round_up_to_page(size);
 	n     = size/PAGE_SIZE;
 	addr  = alloc_pages(n);
 	memid = mem_create(addr, size);
@@ -43,7 +43,7 @@ rpc_send(int node_mem, int recv_node, int size)
 //	printc("rpc send sender %d to %d id %d sz %d\n", caller, recv_node, memid, size);
 	mem = mem_lookup(memid);
 	assert(size <= mem->size);
-	addr = mem->addr;
+	addr = (void *)mem->addr;
 	clwb_range(addr, addr+size);
 	meta.mem_id = memid;
 	meta.size   = size;
@@ -72,8 +72,8 @@ rpc_recv(int node_mem, int spin)
 				ret->addr   = mem_retrieve(meta.mem_id, caller);
 				mem         = mem_lookup(meta.mem_id);
 				assert(meta.size <= mem->size);
-				addr = mem->addr;
-				clflush_range(addr, addr+size);
+				addr = (void *)mem->addr;
+				clflush_range(addr, addr+meta.size);
 				return ret_page[caller].dst;
 			}
 		}
@@ -112,7 +112,7 @@ rpc_init(int node_mem, vaddr_t untype, int size)
 	int i, j;
 
 	printc("rpc init node %d addr %x size %x\n", caller, untype, size);
-	mem_mgr_init(untype, size);
+	mem_mgr_init(untype, size, (vaddr_t)cos_get_heap_ptr()+PAGE_SIZE);
 	for(i=0; i<NUM_NODE; i++) {
 		for(j=0; j<NUM_NODE; j++) {
 			global_msg_pool.nodes[i].recv[j].head = 0;

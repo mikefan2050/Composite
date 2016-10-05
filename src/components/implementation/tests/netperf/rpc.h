@@ -15,7 +15,12 @@ enum rpc_captbl_layout {
 	RPC_FREE        = 10, 
 	RPC_REGISTER    = 12,
 	RPC_INIT        = 14,
-	RPC_CAPTBL_FREE = round_up_to_pow2(RPC_INIT, CAPMAX_ENTRY_SZ)
+	MC_REGISTER     = 16,
+	MC_SET_KEY      = 18,
+	MC_GET_KEY      = 20,
+	MC_INIT         = 22,
+	MC_PRINT_STATUS = 24,
+	RPC_CAPTBL_FREE = round_up_to_pow2(MC_PRINT_STATUS, CAPMAX_ENTRY_SZ)
 };
 
 struct msg_meta {
@@ -49,7 +54,7 @@ struct recv_ret {
 	int mem_id, size, sender;
 };
 
-struct shared_ret_page {
+struct shared_page {
 	void *addr, *dst;
 };
 

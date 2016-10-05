@@ -1,4 +1,4 @@
-C_OBJS=micro_booter.o client.o server.o rpc.o mem_mgr.o
+C_OBJS=micro_booter.o bench.o rpc.o mem_mgr.o
 ASM_OBJS=cos_asm_scheduler.o inv.o
 COMPONENT=netperf.o
 INTERFACES=
