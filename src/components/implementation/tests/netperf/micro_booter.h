@@ -18,9 +18,9 @@
 #include <cobj_format.h>
 #include <cos_kernel_api.h>
 
-#define ITER 1000000
-#define CACHELINE_SIZE  64
-#define PACKET_SIZE (PAGE_SIZE)
+#define CPU_FREQ       2700000
+#define ITER           1000000
+#define CACHELINE_SIZE 64
 #define NON_CC_OP
 
 struct meta_header {

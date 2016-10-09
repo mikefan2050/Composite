@@ -10,7 +10,7 @@ rpc_create(int node_mem, int size)
 	void *addr;
 	volatile struct create_ret *ret = (struct create_ret *)ret_page[caller].addr;
 
-	printc("rpc create node %d\n", caller);
+//	printc("rpc create node %d\n", caller);
 	size  = round_up_to_page(size);
 	n     = size/PAGE_SIZE;
 	addr  = alloc_pages(n);
@@ -63,7 +63,7 @@ rpc_recv(int node_mem, int spin)
 
 //	printc("rpc recv node %d\n", caller);
 	do {
-		for(i=0; i<NUM_NODE; i++) {
+		for(i=(caller+1)%NUM_NODE; i!=caller; i = (i+1)%NUM_NODE) {
 			deq = msg_dequeue(&global_msg_pool.nodes[caller].recv[i], &meta);
 			if (!deq) {
 				ret->mem_id = meta.mem_id;

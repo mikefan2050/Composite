@@ -5,7 +5,7 @@
 #include "server_stub.h"
 #include "mem_mgr.h"
 
-#define MSG_NUM 16
+#define MSG_NUM 1024
 
 enum rpc_captbl_layout {
 	RPC_CREATE      = 2,
