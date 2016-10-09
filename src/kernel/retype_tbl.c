@@ -42,6 +42,7 @@ non_cc_mod_ref_cnt(void *pa, const int op, const int type_check)
 	} else {
 		local_u.ref_cnt = local_u.ref_cnt - 1;
 		non_cc_rdtscll(&retype_entry->last_unmap);
+		cos_wb_cache(&retype_entry->last_unmap);
 		cos_mem_fence();
 //		cos_inst_bar();
 	}

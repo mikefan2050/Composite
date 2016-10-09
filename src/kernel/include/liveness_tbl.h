@@ -102,8 +102,10 @@ ltbl_expire(struct liveness_data *ld)
 	ent = __ltbl_lkupan(LTBL_REF(pmem), ld->id-pmem*LTBL_ENTS, __ltbl_maxdepth(), NULL);
 	old_v = ent->epoch;
 
-	if (pmem) non_cc_rdtscll(&ent->deact_timestamp);
-	else rdtscll(ent->deact_timestamp);
+	if (pmem) {
+		non_cc_rdtscll(&ent->deact_timestamp);
+		cos_wb_cache(&ent->deact_timestamp);
+	} else rdtscll(ent->deact_timestamp);
 	cos_mem_fence();
 //	cos_inst_bar();
 
@@ -181,8 +183,10 @@ ltbl_timestamp_update(livenessid_t id, int pmem)
 //	cos_inst_bar();
 	cos_mem_fence();
 
-	if (pmem) non_cc_rdtscll(&ent->deact_timestamp);
-	else rdtscll(ent->deact_timestamp);
+	if (pmem) {
+		non_cc_rdtscll(&ent->deact_timestamp);
+		cos_wb_cache(&ent->deact_timestamp);
+	} else rdtscll(ent->deact_timestamp);
 
 	return 0;
 }

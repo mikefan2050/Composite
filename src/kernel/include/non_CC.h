@@ -36,7 +36,6 @@ non_cc_rdtscll(u64_t *t)
 		cos_flush_cache(global_tsc);
 	}
 	*t = *global_tsc;
-	cos_wb_cache(t);
 }
 
 static inline int 
