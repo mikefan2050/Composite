@@ -337,6 +337,7 @@ __ert_expand(struct ert *v, unsigned long id, u32_t dstart, u32_t dlimit, void *
 	limit  = dlimit < depth ? dlimit : depth;
 	for (i = dstart ; i < limit-1 ; i++) {
 		n = __ert_walk(n, id, accum, depth-i, ERT_CONST_ARGS);
+//		if (unlikely(isnullfn(n, accum, 0))) cos_flush_cache(n);
 		if (!isnullfn(n, accum, 0)) continue;
 
 		/* expand via memory allocation */

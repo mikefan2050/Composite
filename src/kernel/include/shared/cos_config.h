@@ -46,7 +46,8 @@
 
 /* The kernel quiescence period = WCET in Kernel + WCET of a CAS. */
 #define KERN_QUIESCENCE_PERIOD_US 500
-#define KERN_QUIESCENCE_CYCLES (KERN_QUIESCENCE_PERIOD_US * 4000)
+//#define KERN_QUIESCENCE_CYCLES (KERN_QUIESCENCE_PERIOD_US * 4000)
+#define KERN_QUIESCENCE_CYCLES 100
 #define TLB_QUIESCENCE_CYCLES  (4000 * 1000 * (1000 / CPU_TIMER_FREQ))
 
 // After how many seconds should schedulers print out their information?
