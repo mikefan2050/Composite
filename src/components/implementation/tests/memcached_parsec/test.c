@@ -36,9 +36,9 @@ disconnect_mc_server(int server)
 static int
 server_set_key(char *key, int nkey, char *data, int nbytes)
 {
-    uint32_t hv;
+	uint32_t hv;
 	int node, r;
-    hv = hash(key, nkey);
+	hv   = hash(key, nkey);
 	node = (hv & hashmask(hashpower)) % (NUM_NODE/2);
 
 	r = mc_set_key_ext(node, key, nkey, data, nbytes);
@@ -53,9 +53,9 @@ client_get_key(char *key, int nkey)
 {
 	void *rcv;
 	int node;
-    uint32_t hv;
-    hv        = hash(key, nkey);
-	node      = (hv & hashmask(hashpower)) % (NUM_NODE/2);
+	uint32_t hv;
+	hv   = hash(key, nkey);
+	node = (hv & hashmask(hashpower)) % (NUM_NODE/2);
 
 #ifdef GET_RPC_TEST
 	int r, msg_sz;
@@ -107,9 +107,9 @@ client_set_key(char *key, int nkey, char *data, int nbytes)
 {
 	void *rcv;
 	int node;
-    uint32_t hv;
-    hv        = hash(key, KEY_LENGTH);
-	node      = (hv & hashmask(hashpower)) % (NUM_NODE/2);
+	uint32_t hv;
+	hv   = hash(key, KEY_LENGTH);
+	node = (hv & hashmask(hashpower)) % (NUM_NODE/2);
 
 #ifdef SET_RPC_TEST
 	int r, msg_sz;
@@ -148,56 +148,57 @@ client_set_key(char *key, int nkey, char *data, int nbytes)
 static void 
 bench(void)
 {
-    int i, ret, n_read, n_update, maxkf = 0;
-    char *op = ops, value[V_LENGTH], *key;
-    unsigned long long s, e, s1, e1, max = 0, cost;
+	int i, ret, n_read, n_update, maxkf = 0;
+	char *op = ops, value[V_LENGTH], *key;
+	unsigned long long s, e, s1, e1, max = 0, cost;
 	unsigned long long tot_cost = 0, tot_r, tot_w;
 	unsigned long long prev = 0;
 
-    /* prepare the value -- no real database op needed. */
-    memset(value, '$', V_LENGTH);
+	/* prepare the value -- no real database op needed. */
+	memset(value, '$', V_LENGTH);
 	n_read = n_update = 0;
 	tot_r = tot_w = 0;
 
-    rdtscll(s);
-    for (i = 0; i < N_OPS; i++) {
-//		if (i%10000 == 0) printc("client %d bench i %d\n", cur_node, i);
+	rdtscll(s);
+	for (i = 0; i < N_OPS; i++) {
 		assert(op[KEY_LENGTH + 1] == '\n');
 		key = &op[1];
 
-        rdtscll(s1);
+		rdtscll(s1);
 		if (!prev) prev = s1;
 		if (s1-prev > MC_HASH_FLUSH_PEROID) {
+#ifndef GET_RPC_TEST
 			call_cap_mb(MC_FLUSH, cur_node, 0, 0);
-			prev = s1;
-            ret = kernel_flush();
+#endif
+			ret = kernel_flush();
 			if (ret > maxkf) maxkf = ret;
+			prev = s1;
 		}
-        rdtscll(s1);
-        if (*op == 'R') {
-            n_read++;
-            ret = client_get_key(key, KEY_LENGTH);
-        } else {
-            assert(*op == 'U');
-            n_update++;
-            ret = client_set_key(key, KEY_LENGTH, value, V_LENGTH);
-            assert(ret == 0);
-        }
-        rdtscll(e1);
-        cost = e1-s1;
+		rdtscll(s1);
+		if (*op == 'R') {
+			n_read++;
+			ret = client_get_key(key, KEY_LENGTH);
+		} else {
+			assert(*op == 'U');
+			n_update++;
+			ret = client_set_key(key, KEY_LENGTH, value, V_LENGTH);
+			assert(ret == 0);
+		}
+		rdtscll(e1);
+		cost = e1-s1;
 		if (*op == 'R') tot_r += cost;
 		else tot_w += cost;
-        tot_cost += cost;
-        if (cost > max) max = cost;
+		tot_cost += cost;
+		if (cost > max) max = cost;
 		op += (KEY_LENGTH+2);
-    }
-    rdtscll(e);
+	}
+	rdtscll(e);
 
-    printc("Node %d: tot %lu ops (r %lu, u %lu) done, time(ms) %llu, thput %llu\n",
-           cur_node, n_read+n_update, n_read, n_update, tot_cost/(unsigned long long)CPU_FREQ, 
+	printc("Node %d: tot %lu ops (r %lu, u %lu) done, time(ms) %llu, thput %llu\n",
+	   	cur_node, n_read+n_update, n_read, n_update, tot_cost/(unsigned long long)CPU_FREQ, 
 		   (unsigned long long)CPU_FREQ * N_OPS * 1000 / tot_cost);
 	printc("%llu (%llu) cycles per op, max %llu, get %llu, set %llu kernel flush %d\n", (unsigned long long)(e-s)/(n_read + n_update),
-           tot_cost/(n_read+n_update), max, tot_r/n_read, tot_w/n_update, maxkf);
+	   	tot_cost/(n_read+n_update), max, tot_r/n_read, tot_w/n_update, maxkf);
 	call_cap_mb(MC_PRINT_STATUS, cur_node, KEY_LENGTH, V_LENGTH);
 #ifdef GET_RPC_TEST
 	printc("client get rcv %llu\n", debug_get_tot/debug_get_rcv);
@@ -207,21 +208,21 @@ bench(void)
 void
 preload_key(int cur)
 {
-    /* insert all the keys into the cache before accessing the
-     * traces. If the cache is large enough, there will be no miss.*/
-    char *buf = load_key, v[V_LENGTH];
-    int bytes = KEY_LENGTH + 1, i;
-    uint32_t hv;
+	/* insert all the keys into the cache before accessing the
+	* traces. If the cache is large enough, there will be no miss.*/
+	char *buf = load_key, v[V_LENGTH];
+	int bytes = KEY_LENGTH + 1, i;
+	uint32_t hv;
 	unsigned long long start, end;
 
 	rdtscll(start);
-    for (i = 0; i < N_KEYS; i++) {
-        memcpy(v, buf, KEY_LENGTH);
-        memcpy(&v[KEY_LENGTH], buf, KEY_LENGTH);
+	for (i = 0; i < N_KEYS; i++) {
+		memcpy(v, buf, KEY_LENGTH);
+		memcpy(&v[KEY_LENGTH], buf, KEY_LENGTH);
 		memset(v, '$', V_LENGTH);
 		server_set_key(buf, KEY_LENGTH, v, V_LENGTH);
 		buf += bytes;
-    }
+	}
 	rdtscll(end);
 	printc("load key node finish total key %d avg %llu\n", N_KEYS, (end-start)/N_KEYS);
 	mc_print_status();
@@ -275,5 +276,5 @@ client_init(int cur)
 	mc_ret  = (char *)call_cap_mb(MC_REGISTER, cur_node, 3, 1);
 	assert(mc_ret);
 
-    hash_init(JENKINS_HASH);
+	hash_init(JENKINS_HASH);
 }
