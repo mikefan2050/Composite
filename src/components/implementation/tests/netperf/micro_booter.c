@@ -148,6 +148,12 @@ boot_node_init(void)
 	ic = cos_sinv_alloc(&booter_info, rpc_comp, (vaddr_t)SERVER_FN(rpc_register));
 	cos_cap_cpy_captbl_at(client_ct, RPC_REGISTER, BOOT_CAPTBL_SELF_CT, ic);
 	cos_cap_cpy_captbl_at(server_ct, RPC_REGISTER, BOOT_CAPTBL_SELF_CT, ic);
+	ic = cos_sinv_alloc(&booter_info, rpc_comp, (vaddr_t)SERVER_FN(rpc_call));
+	cos_cap_cpy_captbl_at(client_ct, RPC_CALL, BOOT_CAPTBL_SELF_CT, ic);
+	cos_cap_cpy_captbl_at(server_ct, RPC_CALL, BOOT_CAPTBL_SELF_CT, ic);
+	ic = cos_sinv_alloc(&booter_info, rpc_comp, (vaddr_t)SERVER_FN(rpc_wait_replay));
+	cos_cap_cpy_captbl_at(client_ct, RPC_WAIT, BOOT_CAPTBL_SELF_CT, ic);
+	cos_cap_cpy_captbl_at(server_ct, RPC_WAIT, BOOT_CAPTBL_SELF_CT, ic);
 	/* copy page table cap to mem_mgr */
 	cos_cap_cpy_captbl_at(rpc_ct, MEM_SELF_CT, BOOT_CAPTBL_SELF_CT, rpc_ct);
 	cos_cap_cpy_captbl_at(rpc_ct, MEM_SELF_PT, BOOT_CAPTBL_SELF_CT, rpc_pt);

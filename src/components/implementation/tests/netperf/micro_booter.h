@@ -91,6 +91,7 @@ clflush_range(void *s, void *e)
 	s = (void *)round_to_cacheline(s);
 	e = (void *)round_to_cacheline(e-1);
 	for(; s<=e; s += CACHE_LINE) cos_flush_cache(s);
+	asm volatile ("sfence"); /* serialize */
 }
 
 static inline void
@@ -99,6 +100,7 @@ clwb_range(void *s, void *e)
 	s = (void *)round_to_cacheline(s);
 	e = (void *)round_to_cacheline(e-1);
 	for(; s<=e; s += CACHE_LINE) cos_wb_cache(s);
+	asm volatile ("sfence"); /* serialize */
 }
 
 #endif /* MICRO_BOOTER_H */

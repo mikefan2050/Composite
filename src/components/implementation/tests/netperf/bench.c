@@ -2,9 +2,9 @@
 #include "rpc.h"
 
 #define PACKET_SIZE (8192)
-#define BUFFER_SIZE (2*MSG_NUM)
+#define BUFFER_SIZE (2+MSG_NUM)
 #define TOT_SIZE (1<<30)
-#define TOT_RR_REQ (10000000)
+#define TOT_RR_REQ (1000000)
 enum {
 	RPC_STREAM,
 	RPC_RR,
@@ -53,7 +53,7 @@ rpc_stream_sent(void)
 	rdtscll(end);
 
 	time = (end - start)/(unsigned long long)CPU_FREQ;
-	printc("n %d tot size %dbytes tiem %llums thput %llu byte/s\n", n, TOT_SIZE, time, (unsigned long long)TOT_SIZE * 1000 / time);
+	printc("n %d tot size %dbytes tiem %llums thput %llu Mbits/s\n", n, TOT_SIZE, time, (unsigned long long)TOT_SIZE /1000*8 / time);
 }
 
 static void
@@ -94,6 +94,7 @@ rpc_rr_sent()
 
 	rdtscll(start);
 	for(i=0; i<TOT_RR_REQ; i++) {
+		//rcv_ret = (struct recv_ret *)call_cap_mb(RPC_CALL, (memid << 16) | cur_node, 1-cur_node, PACKET_SIZE);
 		r = call_cap_mb(RPC_SEND, (memid << 16) | cur_node, 1-cur_node, PACKET_SIZE);
 		assert(!r);
 		rcv_ret = (struct recv_ret *)call_cap_mb(RPC_RECV, cur_node, 1, 0);
@@ -115,6 +116,7 @@ rpc_rr_recv()
 	struct recv_ret *rcv_ret;
 
 	for(i=0; i<TOT_RR_REQ; i++) {
+		//r = call_cap_mb(RPC_WAIT, (snt_id << 16) | cur_node, PACKET_SIZE, 0);
 		rcv_ret = (struct recv_ret *)call_cap_mb(RPC_RECV, cur_node, 1, 0);
 		assert(rcv_ret);
 		assert(rcv_ret->sender == 1-cur_node);

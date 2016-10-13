@@ -5,7 +5,7 @@
 #include "server_stub.h"
 #include "mem_mgr.h"
 
-#define MSG_NUM 1024
+#define MSG_NUM (2*8192)
 
 enum rpc_captbl_layout {
 	RPC_CREATE      = 2,
@@ -20,7 +20,9 @@ enum rpc_captbl_layout {
 	MC_GET_KEY      = 20,
 	MC_INIT         = 22,
 	MC_PRINT_STATUS = 24,
-	RPC_CAPTBL_FREE = round_up_to_pow2(MC_PRINT_STATUS, CAPMAX_ENTRY_SZ)
+	RPC_CALL        = 26,
+	RPC_WAIT        = 28,
+	RPC_CAPTBL_FREE = round_up_to_pow2(RPC_WAIT, CAPMAX_ENTRY_SZ)
 };
 
 struct msg_meta {
@@ -62,6 +64,8 @@ void *rpc_create(int node_mem, int size);   /* return mem address and mem_id*/
 int rpc_connect(int node_mem, int recv_node, int size);
 int rpc_send(int node_mem, int recv_node, int size);
 void *rpc_recv(int node_mem, int spin);  /* return mem addr, mem_id, size and sender */ 
+void *rpc_call(int node_mem, int recv_node, int size);  /* return mem addr, mem_id, size and sender */ 
+int rpc_wait_replay(int node_mem, int size);
 int rpc_free(int node_mem, int size);
 void rpc_register(int node_mem);   /* set up shared page for return */
 void rpc_init(int node_mem, vaddr_t untype, int size);
@@ -70,6 +74,8 @@ DECLARE_INTERFACE(rpc_create)
 DECLARE_INTERFACE(rpc_connect)
 DECLARE_INTERFACE(rpc_send)
 DECLARE_INTERFACE(rpc_recv)
+DECLARE_INTERFACE(rpc_call)
+DECLARE_INTERFACE(rpc_wait_replay)
 DECLARE_INTERFACE(rpc_free)
 DECLARE_INTERFACE(rpc_register)
 DECLARE_INTERFACE(rpc_init)
@@ -86,6 +92,7 @@ msg_enqueue(struct msg_queue *q, struct msg_meta *entry)
 	if (delta == consumer) return -1;
 	q->ring[producer] = *entry;
 	cos_wb_cache(&q->ring[producer]);
+	asm volatile ("sfence"); /* serialize */
 	non_cc_store_int(&q->tail, delta);
 	return 0;
 }

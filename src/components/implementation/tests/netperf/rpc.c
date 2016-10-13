@@ -55,7 +55,7 @@ void *
 rpc_recv(int node_mem, int spin)
 {
 	int caller = node_mem & 0xFFFF, memid = node_mem >> 16;
-	volatile struct recv_ret *ret = (struct recv_ret *)ret_page[caller].addr;
+	struct recv_ret *ret = (struct recv_ret *)ret_page[caller].addr;
 	int deq, i;
 	struct msg_meta meta;
 	struct mem_meta * mem;
@@ -79,6 +79,31 @@ rpc_recv(int node_mem, int spin)
 		}
 	} while(spin);
 	return NULL;
+}
+
+void *
+rpc_call(int node_mem, int recv_node, int size)
+{
+	int r;
+
+	do {
+		r = rpc_send(node_mem, recv_node, size);
+	} while(r);
+
+	return rpc_recv(node_mem, 1);
+}
+
+int
+rpc_wait_replay(int node_mem, int size)
+{
+	int caller = node_mem & 0xFFFF, memid = node_mem >> 16;
+	struct recv_ret *ret = (struct recv_ret *)ret_page[caller].addr;
+	void *r;
+
+	r = rpc_recv(node_mem, 1);
+	assert(r);
+
+	return rpc_send(node_mem, ret->sender, size);
 }
 
 int
