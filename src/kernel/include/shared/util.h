@@ -2,6 +2,8 @@
 #define UTIL_H
 
 #define CAS_SUCCESS 1
+#define ENABLE_CLFLUSHOPT 1
+
 /* 
  * Return values:
  * 0 on failure due to contention (*target != old)
@@ -49,13 +51,23 @@ cos_inst_bar(void)
 static inline void
 cos_flush_cache(void *p)
 {
+//return ;
+#ifdef ENABLE_CLFLUSHOPT
+	__asm__ __volatile__("clflushopt (%0)" :: "r"(p));
+#else
 	__asm__ __volatile__("clflush (%0)" :: "r"(p));
+#endif
 }
 
 static inline void
 cos_wb_cache(void *p)
 {
+//return ;
+#ifdef ENABLE_CLFLUSHOPT
+	__asm__ __volatile__("clflushopt (%0)" :: "r"(p));
+#else
 	__asm__ __volatile__("clflush (%0)" :: "r"(p));
+#endif
 }
 
 #ifndef rdtscll

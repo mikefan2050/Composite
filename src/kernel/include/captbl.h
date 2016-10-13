@@ -380,6 +380,10 @@ captbl_del(struct captbl *t, capid_t cap, cap_t type, livenessid_t lid)
 	if (p != __captbl_getleaf((void*)p, NULL)) cos_throw(err, -EINVAL);
 
 	if (p->type != type) cos_throw(err, -EINVAL);
+	if (pmem) {
+		assert(lid >= LTBL_ENTS);
+		lid -= LTBL_ENTS;
+	}
 
 	h   = (struct cap_header *)CT_MSK(p, CACHELINE_ORDER);
 	off = (struct cap_min*)p - (struct cap_min*)h;

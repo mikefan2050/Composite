@@ -57,12 +57,8 @@ int captbl_deactivate(struct captbl *t, struct cap_captbl *dest_ct_cap, unsigned
 	if (!deact_header || deact_header->type != CAP_CAPTBL) cos_throw(err, -EINVAL);
 
 	pmem_cap = VA_IN_IVSHMEM_RANGE(deact_header);
-	if (pmem_cap) {
-		assert(lid >= LTBL_ENTS);
-		lid -= LTBL_ENTS;
-	} else {
-		assert(lid < LTBL_ENTS);
-	}
+	if (pmem_cap) assert(lid >= LTBL_ENTS);
+	else assert(lid < LTBL_ENTS);
 	deact_cap = (struct cap_captbl *)deact_header;
 	pmem_mem = VA_IN_IVSHMEM_RANGE(deact_cap->captbl);
 	if (pmem_cap) assert(pmem_mem);
