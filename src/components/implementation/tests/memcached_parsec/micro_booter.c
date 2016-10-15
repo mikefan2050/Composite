@@ -120,7 +120,7 @@ boot_node_init(void)
 	captblcap_t client_ct[NUM_NODE], rpc_ct, mc_ct;
 	compcap_t client_comp[NUM_NODE], rpc_comp, mc_comp;
 	struct cos_compinfo client_info[NUM_NODE], rpc_info, mc_info;
-	vaddr_t addr;
+	vaddr_t addr, src, dst;
 	sinvcap_t ic, ret_ic;
 	int i;
 
@@ -221,10 +221,20 @@ boot_node_init(void)
 	}
 	/* alias shared meta page to each component*/
 	for(i=0; i<NUM_NODE; i++) {
-		cos_mem_alias_at(&client_info[i], (vaddr_t)ivshmem_meta, &booter_info, (vaddr_t)ivshmem_meta);
+		dst = cos_mem_alias_ext(&client_info[i], &booter_info, (vaddr_t)ivshmem_meta, 1);
+		assert(dst == ivshmem_meta);
 	}
 	cos_mem_alias_at(&rpc_info, (vaddr_t)ivshmem_meta, &booter_info, (vaddr_t)ivshmem_meta);
 	cos_mem_alias_at(&mc_info, (vaddr_t)ivshmem_meta, &booter_info, (vaddr_t)ivshmem_meta);
+
+	for(i=0; i<COST_ARRAY_NUM_PAGE; i++) {
+		src = (vaddr_t)cos_page_bump_alloc_ext(&booter_info, 0);
+		assert(src);
+		dst = cos_mem_alias_ext(&client_info[NUM_NODE/2], &booter_info, src, 1);
+		assert(dst);
+		dst = cos_mem_alias_ext(&client_info[NUM_NODE-1], &booter_info, src, 1);
+		assert(dst);
+	}
 
 	/* give 4M to booter self, 4M to rpc and the rest to memcached */
 	ic = cos_sinv_alloc(&booter_info, rpc_comp, (vaddr_t)SERVER_FN(rpc_init));

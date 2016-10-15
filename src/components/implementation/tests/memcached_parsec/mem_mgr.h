@@ -3,6 +3,8 @@
 
 #include "micro_booter.h"
 
+#define COST_ARRAY_NUM_PAGE   (9766)
+
 enum mem_mgr_captbl_layout {
 	MEM_SELF_CT      = 30,
 	MEM_SELF_PT      = 32,

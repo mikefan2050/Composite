@@ -12,20 +12,19 @@
 // if defined, ignore all clock list ops, including locking
 #define NO_REPLACEMENT
 #define KEY_LENGTH            16
-#define V_LENGTH              (KEY_LENGTH * 2)
-#define CPU_FREQ              2900000
+#define V_LENGTH              (100)
 #define MC_MEM_EVICT_MAX      512
-#define MC_MEM_EVICT_THOLD    95
+#define MC_MEM_EVICT_THOLD    99
 #define MC_MEM_BALANCE_MAX    512
-#define MC_MEM_BALANCE_THOLD  94
+#define MC_MEM_BALANCE_THOLD  98
 #define MC_MEM_BALANCE_PEROID 10000000
 #define MC_HASH_FLUSH_PEROID  100000000
-#define MAX_MC_HASH_TIME      100000
+#define MAX_MC_HASH_TIME      (1054438*2)
 /* Initial power multiplier for the hash table */
 #define HASHPOWER_DEFAULT     20
-#define MC_SLAB_OBJ_SZ        94
+#define MC_SLAB_OBJ_SZ        163
 //#define GET_RPC_TEST
-//#define MC_NO_MEM_BALANCE
+#define MC_NO_MEM_BALANCE
 //define SERVER_NO_IPC
 #define SET_RPC_TEST
 

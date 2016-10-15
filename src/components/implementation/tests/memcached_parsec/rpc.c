@@ -66,7 +66,7 @@ rpc_recv(int node_mem, int spin)
 
 //	printc("rpc recv node %d\n", caller);
 	do {
-		for(i=0; i<NUM_NODE; i++) {
+		for(i=(caller+1)%NUM_NODE; i!=caller; i = (i+1)%NUM_NODE) {
 			deq = msg_dequeue(&global_msg_pool.nodes[caller].recv[i], &meta);
 			if (!deq) {
 				ret->mem_id = meta.mem_id;
@@ -115,9 +115,11 @@ rpc_init(int node_mem, vaddr_t untype, int size)
 {
 	int caller = node_mem & 0xFFFF, memid = node_mem >> 16;
 	int i, j;
+	vaddr_t vas = (vaddr_t)cos_get_heap_ptr()+PAGE_SIZE+COST_ARRAY_NUM_PAGE*PAGE_SIZE;
+	vas = round_up_to_pgd_page(vas);
 
-	printc("rpc init node %d addr %x size %x vas %x\n", caller, untype, size, (vaddr_t)cos_get_heap_ptr()+PAGE_SIZE);
-	mem_mgr_init(untype, size, (vaddr_t)cos_get_heap_ptr()+PAGE_SIZE);
+	printc("rpc init node %d addr %x size %x vas %x\n", caller, untype, size, vas);
+	mem_mgr_init(untype, size, vas);
 	for(i=0; i<NUM_NODE; i++) {
 		for(j=0; j<NUM_NODE; j++) {
 			global_msg_pool.nodes[i].recv[j].head = 0;

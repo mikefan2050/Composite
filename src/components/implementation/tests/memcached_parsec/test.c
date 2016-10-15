@@ -4,7 +4,7 @@
 
 
 #define N_OPS 10000000
-//#define N_OPS 2000000
+//#define N_OPS 2000
 #define N_KEYS 1000000
 //#define N_KEYS 10
 #define BUFFER_SIZE 100
@@ -13,6 +13,8 @@ char *ops, *load_key;
 static void *buf[NUM_NODE/2];
 static int memid[NUM_NODE/2];
 static char *mc_key, *mc_data, *mc_ret;
+int *req_cost;
+int n_read, n_update, n_tot;
 
 int
 kernel_flush(void)
@@ -20,8 +22,21 @@ kernel_flush(void)
 	int r;
 	do {
 		r = call_cap(CCFLUSH_CAP_TEMP, 0, 0, 0, 0);
-	} while (!r);
+	} while (r < 0);
 	return r;
+}
+
+static int cmpfunc(const void * a, const void * b)
+{
+    return ( *(int*)b - *(int*)a );
+}
+
+static void
+out_latency(void)
+{
+	qsort(req_cost, n_tot, sizeof(int), cmpfunc);
+	printc("tot %d %d 99.9 %d 99 %d min %d max %d\n", n_tot, n_read+n_update, 
+		req_cost[n_tot/1000], req_cost[n_tot/100], req_cost[n_tot-1], req_cost[0]);
 }
 
 static inline void
@@ -46,8 +61,6 @@ server_set_key(char *key, int nkey, char *data, int nbytes)
 	return r;
 }
 
-int debug_get_snt = 0, debug_get_rcv = 0;
-unsigned long long debug_get_tot = 0, degets, degete;
 static int
 client_get_key(char *key, int nkey)
 {
@@ -72,11 +85,7 @@ client_get_key(char *key, int nkey)
 
 	r = call_cap_mb(RPC_SEND, (memid[node] << 16) | cur_node, node, msg_sz);
 	assert(!r);
-	rdtscll(degets);
 	rcv_ret = (struct recv_ret *)call_cap_mb(RPC_RECV, cur_node, 1, 0);
-	rdtscll(degete);
-	debug_get_tot += (degete - degets);
-	debug_get_rcv++;
 	assert(rcv_ret);
 	assert(rcv_ret->sender == node);
 	rcv = rcv_ret->addr;
@@ -148,16 +157,16 @@ client_set_key(char *key, int nkey, char *data, int nbytes)
 static void 
 bench(void)
 {
-	int i, ret, n_read, n_update, maxkf = 0;
+	int i, ret, maxkf = 0;
 	char *op = ops, value[V_LENGTH], *key;
 	unsigned long long s, e, s1, e1, max = 0, cost;
-	unsigned long long tot_cost = 0, tot_r, tot_w;
+	unsigned long long tot_cost = 0, tot_r, tot_w, max_r;
 	unsigned long long prev = 0;
 
 	/* prepare the value -- no real database op needed. */
 	memset(value, '$', V_LENGTH);
-	n_read = n_update = 0;
-	tot_r = tot_w = 0;
+	n_read = n_update = n_tot = 0;
+	tot_r = tot_w = max_r = 0;
 
 	rdtscll(s);
 	for (i = 0; i < N_OPS; i++) {
@@ -176,33 +185,37 @@ bench(void)
 		}
 		rdtscll(s1);
 		if (*op == 'R') {
-			n_read++;
 			ret = client_get_key(key, KEY_LENGTH);
 		} else {
 			assert(*op == 'U');
-			n_update++;
 			ret = client_set_key(key, KEY_LENGTH, value, V_LENGTH);
 			assert(ret == 0);
 		}
 		rdtscll(e1);
-		cost = e1-s1;
-		if (*op == 'R') tot_r += cost;
-		else tot_w += cost;
-		tot_cost += cost;
-		if (cost > max) max = cost;
+		if (!ret) {
+			cost = e1-s1;
+			if (*op == 'R') {
+				tot_r += cost;
+				n_read++;
+				if (cost > max_r) max_r = cost;
+			} else {
+				tot_w += cost;
+				n_update++;
+			}
+			tot_cost += cost;
+			req_cost[n_tot++] = (int)cost;
+			if (cost > max) max = cost;
+		}
 		op += (KEY_LENGTH+2);
 	}
 	rdtscll(e);
 
 	printc("Node %d: tot %lu ops (r %lu, u %lu) done, time(ms) %llu, thput %llu\n",
 	   	cur_node, n_read+n_update, n_read, n_update, tot_cost/(unsigned long long)CPU_FREQ, 
-		   (unsigned long long)CPU_FREQ * N_OPS * 1000 / tot_cost);
-	printc("%llu (%llu) cycles per op, max %llu, get %llu, set %llu kernel flush %d\n", (unsigned long long)(e-s)/(n_read + n_update),
-	   	tot_cost/(n_read+n_update), max, tot_r/n_read, tot_w/n_update, maxkf);
+		   (unsigned long long)CPU_FREQ * n_tot * 1000 / tot_cost);
+	printc("%llu (%llu) cycles per op, max %llu read %llu, get %llu, set %llu kernel flush %d\n", (unsigned long long)(e-s)/(n_read + n_update),
+	   	tot_cost/(n_read+n_update), max, max_r, tot_r/n_read, tot_w/n_update, maxkf);
 	call_cap_mb(MC_PRINT_STATUS, cur_node, KEY_LENGTH, V_LENGTH);
-#ifdef GET_RPC_TEST
-	printc("client get rcv %llu\n", debug_get_tot/debug_get_rcv);
-#endif
 }
 
 void
@@ -242,6 +255,7 @@ client_start(int cur)
 	bench();
 	cos_faa(&ivshmem_meta->boot_num, 1);
 	i = kernel_flush();
+	out_latency();
 	printc("flush kernel page %d\n", i);
 	while (*(volatile int *)&(ivshmem_meta->boot_num) != NUM_NODE*3/2) { ; }
 	disconnect_mc_server(0);
@@ -255,6 +269,7 @@ client_init(int cur)
 	struct create_ret *crt_ret;
 	int msg_sz = PAGE_SIZE, i;
 
+	req_cost = (int *)((char *)cos_get_heap_ptr()+PAGE_SIZE);
 	assert(cur >= NUM_NODE/2);
 	cur_node = cur;
 	printc("I am client heap %p cur_node %d\n", cos_get_heap_ptr(), cur_node);

@@ -7,7 +7,7 @@
 #include "ps_global.h"
 #include <bitmap.h>
 
-#define TOT_MEM_SZ (1024*1024*230)
+#define TOT_MEM_SZ (1024*1024*280)
 #define INIT_MEM_SZ (TOT_MEM_SZ/2)
 #define ITEMS_PER_ALLOC 64
 #define MC_SLAB_AOC_SZ (2*PAGE_SIZE)
@@ -88,7 +88,7 @@ mc_alloc_pages(struct ps_mem *m, size_t sz, coreid_t coreid)
 //        printc("node %d used %d qui %d tot %d smr slab %x ret %d\n", coreid, status[coreid].used, status[coreid].quiesce, status[coreid].target*MC_MEM_EVICT_THOLD/100, __ps_mem_item.percore[coreid].slab_info.el.list, n);
     }
     if (status[coreid].used*100 > status[coreid].target*MC_MEM_EVICT_THOLD) {
-        n = status[coreid].used-status[coreid].target*MC_MEM_EVICT_THOLD/100;
+        n = status[coreid].used-status[coreid].target*(MC_MEM_EVICT_THOLD-2)/100;
         if (n > MC_MEM_EVICT_MAX) n = MC_MEM_EVICT_MAX;
         off = mc_mem_evict(coreid, n);
 //        printc("node %d used %d qui %d tot %d evict %d slab %x ret %d\n", coreid, status[coreid].used, status[coreid].quiesce, status[coreid].target*MC_MEM_EVICT_THOLD/100, n, __ps_mem_item.percore[coreid].slab_info.el.list, off);
@@ -490,6 +490,7 @@ mc_mem_balance(int cur)
 #endif
 
     assert(cur < NUM_NODE/2);
+    if (balance[cur].sent) return ;
     if (status[cur].used*100 <= status[cur].target*MC_MEM_BALANCE_THOLD) {
         if (balance[cur].pending_sent) {
             tmsg.num = balance[cur].pending_sent;
@@ -497,7 +498,6 @@ mc_mem_balance(int cur)
         }
         return ;
     }
-    if (balance[cur].sent) return ;
 
     n = status[cur].used-status[cur].target*(MC_MEM_BALANCE_THOLD-1)/100;
     if (n > MC_MEM_BALANCE_MAX) n = MC_MEM_BALANCE_MAX;
@@ -601,8 +601,8 @@ mc_server_start(int cur)
         if (!prev0) prev0 = curr;
         if (curr - prev0 > MC_HASH_FLUSH_PEROID) {
             mc_hashtbl_flush(cur);
-            prev0 = curr;
             r = kernel_flush();
+            prev0 = curr;
         }
         if (!prev1) prev1 = curr;
         if (curr - prev1 > MC_MEM_BALANCE_PEROID) {
@@ -691,7 +691,7 @@ mc_server_start(int cur)
 void
 mc_init(int node, vaddr_t untype, int size)
 {
-    vaddr_t vas = (vaddr_t)cos_get_heap_ptr()+PAGE_SIZE;
+    vaddr_t vas = (vaddr_t)cos_get_heap_ptr()+PAGE_SIZE+COST_ARRAY_NUM_PAGE*PAGE_SIZE;
     void *addr[NUM_NODE/2];
     int i, j, msg_sz = PAGE_SIZE;
    	struct create_ret *crt_ret;
@@ -727,7 +727,7 @@ mc_init(int node, vaddr_t untype, int size)
 
     for(i=0; i<NUM_NODE/2; i++) {
         mc_status_init(&status[i], INIT_MEM_SZ/PAGE_SIZE, 0);
-        status[i].trac.base = (void *)cos_get_heap_ptr()+PAGE_SIZE;;
+        status[i].trac.base = (void *)vas;
         status[i].trac.map  = alloc_pages(BITMAP_SIZE/PAGE_SIZE);
         memset(status[i].trac.map, 0, BITMAP_SIZE);
         addr[i] = (void *)mc_alloc_pages(NULL, INIT_MEM_SZ, i);
