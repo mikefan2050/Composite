@@ -2,6 +2,7 @@
 #include "test.h"
 
 static struct msg_pool global_msg_pool;
+static struct local_pos snt_pos[NUM_NODE], rcv_pos[NUM_NODE];
 static struct shared_page ret_page[NUM_NODE];
 
 void *
@@ -38,7 +39,6 @@ rpc_send(int node_mem, int recv_node, int size)
 	int caller = node_mem & 0xFFFF, memid = node_mem >> 16;
 	int ret;
 	struct msg_meta meta;
-#ifdef NON_CC_OP
 	struct mem_meta * mem;
 	void *addr;
 
@@ -47,10 +47,13 @@ rpc_send(int node_mem, int recv_node, int size)
 	assert(size <= mem->size);
 	addr = (void *)mem->addr;
 	clwb_range(addr, addr+size);
-#endif
 	meta.mem_id = memid;
 	meta.size   = size;
+#ifdef NO_HEAD
+	ret = msg_enqueue(&global_msg_pool.nodes[recv_node].recv[caller], &snt_pos[recv_node].pos[caller], &meta);
+#else
 	ret = msg_enqueue(&global_msg_pool.nodes[recv_node].recv[caller], &meta);
+#endif
 	return ret;
 }
 
@@ -58,7 +61,7 @@ void *
 rpc_recv(int node_mem, int spin)
 {
 	int caller = node_mem & 0xFFFF, memid = node_mem >> 16;
-	volatile struct recv_ret *ret = (struct recv_ret *)ret_page[caller].addr;
+	struct recv_ret *ret = (struct recv_ret *)ret_page[caller].addr;
 	int deq, i;
 	struct msg_meta meta;
 	struct mem_meta * mem;
@@ -67,18 +70,20 @@ rpc_recv(int node_mem, int spin)
 //	printc("rpc recv node %d\n", caller);
 	do {
 		for(i=(caller+1)%NUM_NODE; i!=caller; i = (i+1)%NUM_NODE) {
+#ifdef NO_HEAD
+			deq = msg_dequeue(&global_msg_pool.nodes[caller].recv[i], &rcv_pos[caller].pos[i], &meta);
+#else
 			deq = msg_dequeue(&global_msg_pool.nodes[caller].recv[i], &meta);
+#endif
 			if (!deq) {
 				ret->mem_id = meta.mem_id;
 				ret->size   = meta.size;
 				ret->sender = i;
 				ret->addr   = mem_retrieve(meta.mem_id, caller);
-#ifdef NON_CC_OP
 				mem         = mem_lookup(meta.mem_id);
 				assert(meta.size <= mem->size);
-				addr = (void *)mem->addr;				
+				addr = (void *)mem->addr;
 				clflush_range(addr, addr+meta.size);
-#endif
 				return ret_page[caller].dst;
 			}
 		}
@@ -120,11 +125,10 @@ rpc_init(int node_mem, vaddr_t untype, int size)
 
 	printc("rpc init node %d addr %x size %x vas %x\n", caller, untype, size, vas);
 	mem_mgr_init(untype, size, vas);
-	for(i=0; i<NUM_NODE; i++) {
-		for(j=0; j<NUM_NODE; j++) {
-			global_msg_pool.nodes[i].recv[j].head = 0;
-			global_msg_pool.nodes[i].recv[j].tail = 0;
-		}
-	}
+	memset((void *)&global_msg_pool, 0, sizeof(struct msg_pool));
+#ifdef NO_HEAD
+	memset((void *)&snt_pos, 0, sizeof(snt_pos));
+	memset((void *)&rcv_pos, 0, sizeof(rcv_pos));
+#endif
 }
 
