@@ -14,7 +14,7 @@ static inline int
 __cc_quiescence_local_check(u64_t timestamp)
 {
 	int i, quiescent = 1;
-	for (i = 0; i < NUM_NODE; i++) {
+	for (i = (cur_node+1)%NUM_NODE; i != cur_node; i = (i+1)%NUM_NODE) {
 		if (timestamp > local_quiescence[i]) {
 			quiescent = 0;
 			break;
@@ -55,20 +55,34 @@ cos_quiescence_check(u64_t cur, u64_t past, u64_t grace_period, quiescence_type_
 	return 0;
 }
 
+static inline void
+global_tlb_flush(void)
+{
+	u32_t cr3, cr4;
+
+	asm("movl %%cr4, %0" : "=r"(cr4));
+	asm("movl %%cr3, %0" : "=r"(cr3));
+	asm("movl %0, %%cr4" : : "r"(cr4 & (~(1<<7)) ));
+	asm("movl %0, %%cr3" : : "r"(cr3));
+	asm("movl %0, %%cr4" : : "r"(cr4));
+}
+
 int
 cos_cache_mandatory_flush(void)
 {
 	unsigned long *pte, page;
 	void *addr;
-	int i, j, ret = 0;
+	int i, j, r = -1;
 	u32_t *kernel_pgtbl = (u32_t *)&boot_comp_pgd;
 
-	if (cur_pgd_idx == ivshmem_pgd_idx && !cur_pte_idx) {
+	if (cur_pgd_idx == ivshmem_pgd_idx) {
 		non_cc_rdtscll(&clflush_start);
 		npage_flush = 0;
 	}
-	pte = chal_pa2va(kernel_pgtbl[cur_pgd_idx] & PGTBL_FRAME_MASK);
-	for(i=cur_pte_idx, j=0; i < (int)TOT_PTE_NUM && j < (int)CC_PTE_NUM; i++, j++) {
+
+	page = kernel_pgtbl[cur_pgd_idx];
+	pte = chal_pa2va(page & PGTBL_FRAME_MASK);
+	for(i=0; i < (int)TOT_PTE_NUM; i++) {
 		page = pte[i];
 		if (page & PGTBL_ACCESSED) {
 			addr = chal_pa2va(page & PGTBL_FRAME_MASK);
@@ -77,21 +91,17 @@ cos_cache_mandatory_flush(void)
 			npage_flush++;
 		}
 	}
-	if (i == TOT_PTE_NUM) {
-		cur_pte_idx = 0;
-		cur_pgd_idx++;
-		if (cur_pgd_idx == ivshmem_pgd_end) {
-			cur_pgd_idx = ivshmem_pgd_idx;
-		}
-	} else {
-		cur_pte_idx = i;
-	}
-	if (cur_pgd_idx == ivshmem_pgd_idx && !cur_pte_idx) {
+	cur_pgd_idx++;
+	if (cur_pgd_idx == ivshmem_pgd_end) {
 		cc_quiescence[cur_node].last_mandatory_flush = clflush_start;
 		cos_wb_cache(&cc_quiescence[cur_node].last_mandatory_flush);
-		ret = npage_flush;
+		r = npage_flush;
+		cur_pgd_idx = ivshmem_pgd_idx;
+		global_tlb_flush();
+		asm volatile ("sfence"); /* serialize */
 	}
-	return ret;
+
+	return r;
 }
 
 void
