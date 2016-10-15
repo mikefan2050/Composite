@@ -117,4 +117,5 @@ captblcap_t cos_captbl_alloc_ext(struct cos_compinfo *ci, int pmem);
 pgtblcap_t cos_pgtbl_alloc_ext(struct cos_compinfo *ci, int pmem);
 int cos_cap_cpy_captbl_at(capid_t dstci, capid_t dstcap, capid_t srcci, capid_t srccap);
 
+u32_t livenessid_bump_alloc(int pmem);
 #endif /* COS_KERNEL_API_H */

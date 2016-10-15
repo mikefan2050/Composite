@@ -438,7 +438,8 @@ __page_bump_alloc(struct cos_compinfo *ci, int pmem)
 CACHE_ALIGNED static u32_t livenessid_frontier = BOOT_LIVENESS_ID_BASE;
 CACHE_ALIGNED u32_t pmem_livenessid_frontier;
 
-static u32_t
+//static u32_t
+u32_t
 livenessid_bump_alloc(int pmem)
 { return (pmem) ? pmem_livenessid_frontier++ : livenessid_frontier++; }
 
