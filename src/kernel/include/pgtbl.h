@@ -576,6 +576,7 @@ static pgtbl_t pgtbl_create(void *page, void *curr_pgtbl) {
 	/* Copying the kernel part of the pgd. */
 	memcpy(page + KERNEL_PGD_REGION_OFFSET, (void *)chal_pa2va((paddr_t)curr_pgtbl) + KERNEL_PGD_REGION_OFFSET, KERNEL_PGD_REGION_SIZE);
 
+	if (VA_IN_IVSHMEM_RANGE(page)) retypetbl_non_cc_add_pgd((void *)chal_va2pa(page));
 	return ret;
 }
 int pgtbl_activate(struct captbl *t, unsigned long cap, unsigned long capin, pgtbl_t pgtbl, u32_t lvl);

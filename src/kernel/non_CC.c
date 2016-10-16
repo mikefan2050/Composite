@@ -67,6 +67,36 @@ global_tlb_flush(void)
 	asm("movl %0, %%cr4" : : "r"(cr4));
 }
 
+static inline int
+global_pte_flush(void)
+{
+//#define IVSHMEM_RETYPE_SZ (IVSHMEM_TOT_SIZE/(RETYPE_MEM_NPAGES*PAGE_SIZE))
+#define IVSHMEM_RETYPE_SZ max_pmem_idx
+#define KERNEL_OFF 768
+	static u32_t off=0;
+	unsigned long *pgd, pte;
+	void *addr;
+	int i;
+
+	for(; off<IVSHMEM_RETYPE_SZ; off++) {
+		if (!pmem_retype_tbl->mem_set[off].__pad) continue;
+		addr = (void *)ivshmem_phy_addr+off*RETYPE_MEM_SIZE;
+		pgd  = (unsigned long *)chal_pa2va((paddr_t)addr);
+		for(i=0; i<KERNEL_OFF; i++) {
+			pte = pgd[i];
+			if (pte & PGTBL_PRESENT) {
+				addr = chal_pa2va(pte & PGTBL_FRAME_MASK);
+				cos_clflush_range(addr, addr+PAGE_SIZE);
+				npage_flush++;
+			}
+		}
+		off++;
+		return 1;
+	}
+	off = 0;
+	return 0;
+}
+
 int
 cos_cache_mandatory_flush(void)
 {
@@ -76,8 +106,18 @@ cos_cache_mandatory_flush(void)
 	u32_t *kernel_pgtbl = (u32_t *)&boot_comp_pgd;
 
 	if (cur_pgd_idx == ivshmem_pgd_idx) {
-		non_cc_rdtscll(&clflush_start);
+		if (!npage_flush) non_cc_rdtscll(&clflush_start);
+		if (global_pte_flush()) return -1;
+	}
+	if (cur_pgd_idx == ivshmem_pgd_end) {
+		cc_quiescence[cur_node].last_mandatory_flush = clflush_start;
+		cos_wb_cache(&cc_quiescence[cur_node].last_mandatory_flush);
+		r = npage_flush;
+		cur_pgd_idx = ivshmem_pgd_idx;
+		global_tlb_flush();
 		npage_flush = 0;
+		asm volatile ("sfence"); /* serialize */
+		return r;
 	}
 
 	page = kernel_pgtbl[cur_pgd_idx];
@@ -92,16 +132,8 @@ cos_cache_mandatory_flush(void)
 		}
 	}
 	cur_pgd_idx++;
-	if (cur_pgd_idx == ivshmem_pgd_end) {
-		cc_quiescence[cur_node].last_mandatory_flush = clflush_start;
-		cos_wb_cache(&cc_quiescence[cur_node].last_mandatory_flush);
-		r = npage_flush;
-		cur_pgd_idx = ivshmem_pgd_idx;
-		global_tlb_flush();
-		asm volatile ("sfence"); /* serialize */
-	}
 
-	return r;
+	return -1;
 }
 
 void

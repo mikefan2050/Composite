@@ -16,6 +16,7 @@
 struct retype_info     retype_tbl[NUM_CPU]        CACHE_ALIGNED;
 struct retype_info_glb glb_retype_tbl[N_MEM_SETS] CACHE_ALIGNED;
 struct retype_info     *pmem_retype_tbl;
+u32_t max_pmem_idx = 0;
 
 static inline int
 non_cc_mod_ref_cnt(void *pa, const int op, const int type_check)
@@ -333,6 +334,25 @@ restore_all:
 	}
 
 	return ret;
+}
+
+int
+retypetbl_non_cc_add_pgd(void *pa)
+{
+	u32_t idx;
+	struct retype_entry *retype_entry;
+	union refcnt_atom local_u;
+
+	assert(PA_IN_IVSHMEM_RANGE(pa));
+	idx = GET_NON_CC_MEM_IDX(pa);
+	assert(idx < N_MEM_SETS);
+	retype_entry = GET_NON_CC_RETYPE_ENTRY(idx);
+	local_u.v = retype_entry->refcnt_atom.v;
+	assert(local_u.type == RETYPETBL_KERN);
+	retype_entry->__pad = 1;
+	cos_wb_cache(&(retype_entry->__pad));
+	if (idx > max_pmem_idx) max_pmem_idx = idx;
+	return 0;
 }
 
 void
