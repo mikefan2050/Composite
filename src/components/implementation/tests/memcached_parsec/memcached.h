@@ -25,7 +25,7 @@
 #define MC_SLAB_OBJ_SZ        163
 //#define GET_RPC_TEST
 #define MC_NO_MEM_BALANCE
-//define SERVER_NO_IPC
+//#define SERVER_NO_IPC
 #define SET_RPC_TEST
 
 #define TRACE_FILE "../mc_trace/trace10p_key"

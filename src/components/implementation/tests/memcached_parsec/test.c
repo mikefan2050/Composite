@@ -2,7 +2,7 @@
 #include "test.h"
 #include "rpc.h"
 
-
+#define READ_THPUT 1
 #define N_OPS 10000000
 //#define N_OPS 2000
 #define N_KEYS 1000000
@@ -155,7 +155,7 @@ client_set_key(char *key, int nkey, char *data, int nbytes)
 }
 
 static void 
-bench(void)
+bench()
 {
 	int i, ret, maxkf = 0;
 	char *op = ops, value[V_LENGTH], *key;
@@ -198,13 +198,22 @@ bench(void)
 				tot_r += cost;
 				n_read++;
 				if (cost > max_r) max_r = cost;
-			} else {
+			}
+#ifndef READ_THPUT
+			else {
 				tot_w += cost;
 				n_update++;
 			}
+#endif
+
+#ifdef READ_THPUT
+			if (*op == 'R')
+#endif
+			{
 			tot_cost += cost;
 			req_cost[n_tot++] = (int)cost;
 			if (cost > max) max = cost;
+			}
 		}
 		op += (KEY_LENGTH+2);
 	}

@@ -75,6 +75,7 @@ __ps_mhead_init(struct ps_mheader *h, struct ps_slab *s)
 
 struct ps_qsc_list {
 	struct ps_slab *head, *tail;
+	char padding[2*PS_CACHE_LINE-2*sizeof(struct ps_slab *)];
 } PS_ALIGNED;
 
 struct ps_slab_info {

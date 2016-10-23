@@ -7,7 +7,7 @@
 #include "ps_global.h"
 #include <bitmap.h>
 
-#define TOT_MEM_SZ (1024*1024*280)
+#define TOT_MEM_SZ (1024*1024*320)
 #define INIT_MEM_SZ (TOT_MEM_SZ/2)
 #define ITEMS_PER_ALLOC 64
 #define MC_SLAB_AOC_SZ (2*PAGE_SIZE)
@@ -33,13 +33,15 @@ struct mc_status {
     int miss, init_done;
     int confict, evict;
     struct vas_extent trac;  /* track mc's own virtual address space */
-};
+    char pad[CACHE_LINE];
+} __attribute__((aligned(CACHE_LINE), packed));
 
 struct mc_mem_balance_info {
     int memid, sent;
     void *buf;
     int snt_num, rcv_num, pending_sent;
-};
+    char pad[CACHE_LINE];
+} __attribute__((aligned(CACHE_LINE), packed));
 
 struct mc_mem_msg {
 	mc_message_t type;
@@ -586,7 +588,7 @@ mc_server_start(int cur)
 	volatile struct recv_ret *rcv_ret;
 	struct mc_msg *rcv, *ret;
     struct mc_mem_msg *msg;
-    int r, sender, e = 1, set = 0;
+    int r, sender, e = 1, set = 0, maxkf = 0;
 	unsigned long long set_cost, send_cost, s1, s2, s3;
     unsigned long long prev0, prev1, curr;
     char *key, *data;
@@ -596,12 +598,14 @@ mc_server_start(int cur)
     printc("I am mc server node %d\n", cur);
 	assert(cur < NUM_NODE/2);
     set_cost = send_cost = prev0 = prev1 = 0;
+    kernel_flush();
     while (e) {
         rdtscll(curr);
         if (!prev0) prev0 = curr;
         if (curr - prev0 > MC_HASH_FLUSH_PEROID) {
             mc_hashtbl_flush(cur);
             r = kernel_flush();
+			if (r > maxkf) maxkf = r;
             prev0 = curr;
         }
         if (!prev1) prev1 = curr;
@@ -683,8 +687,8 @@ mc_server_start(int cur)
         }
         }
     }
-    printc("MC server tracking set request %d avg %llu set %llu send %llu\n", set, (set_cost+send_cost)/set, 
-            set_cost/set, send_cost/set);
+    printc("MC server tracking set request %d avg %llu set %llu send %llu flush %d\n",
+            set, (set_cost+send_cost)/set, set_cost/set, send_cost/set, maxkf);
     return ;
 }
 

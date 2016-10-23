@@ -18,11 +18,15 @@
 typedef  unsigned long  int  ub4;   /* unsigned 4-byte quantities */
 typedef  unsigned       char ub1;   /* unsigned 1-byte quantities */
 
+struct list_head {
+    item *head;
+    char pad[CACHE_LINE-sizeof(item *)];
+} __attribute__((aligned(CACHE_LINE), packed));
 /* how many powers of 2's worth of buckets we use */
 unsigned int hashpower = HASHPOWER_DEFAULT;
 
 /* Main hash table. This is where we look except during expansion. */
-static item** primary_hashtable;//[hashsize(HASHPOWER_DEFAULT)];
+static struct list_head *primary_hashtable;
 
 /* Number of items in the hash table. */
 static unsigned int hash_items = 0;
@@ -30,7 +34,7 @@ static unsigned int hash_items = 0;
 void
 assoc_init(int node, const int hashtable_init)
 {
-    int size = hashsize(HASHPOWER_DEFAULT) * sizeof(void *);
+    int size = hashsize(HASHPOWER_DEFAULT) * sizeof(struct list_head);
     size = round_up_to_page(size)/PAGE_SIZE;
     primary_hashtable = alloc_pages(size);
     memset(primary_hashtable, 0, size*PAGE_SIZE);
@@ -42,7 +46,7 @@ assoc_find(int node, const char *key, const size_t nkey, const uint32_t hv)
 {
     item *it;
 
-    it = primary_hashtable[hv & hashmask(hashpower)];
+    it = primary_hashtable[hv & hashmask(hashpower)].head;
 
     item *ret = NULL;
     while (it) {
@@ -63,7 +67,7 @@ _hashitem_before(int node, const char *key, const size_t nkey, const uint32_t hv
 {
     item **pos;
 
-    pos = &primary_hashtable[hv & hashmask(hashpower)];
+    pos = &(primary_hashtable[hv & hashmask(hashpower)].head);
     while (*pos && ((nkey != (*pos)->nkey) || memcmp(key, ITEM_key(*pos), nkey))) {
         pos = &(*pos)->h_next;
     }
@@ -76,12 +80,10 @@ int
 assoc_insert(int node, item *it, const uint32_t hv)
 {
     assert((hv & hashmask(hashpower)) % (NUM_NODE/2) == (uint32_t)node);
-    it->h_next = primary_hashtable[hv & hashmask(hashpower)];
-    primary_hashtable[hv & hashmask(hashpower)] = it;
-#ifdef NON_CC_OP
+    it->h_next = primary_hashtable[hv & hashmask(hashpower)].head;
     clwb_range(it, ((char *)it)+MC_SLAB_OBJ_SZ);
-    cos_wb_cache(&primary_hashtable[hv & hashmask(hashpower)]);
-#endif
+    primary_hashtable[hv & hashmask(hashpower)].head = it;
+    cos_wb_cache(&(primary_hashtable[hv & hashmask(hashpower)].head));
 
     return 1;
 }
@@ -95,9 +97,7 @@ assoc_delete(int node, const char *key, const size_t nkey, const uint32_t hv)
         item *nxt;
         nxt = (*before)->h_next;
         *before = nxt;
-#ifdef NON_CC_OP
         cos_wb_cache(before);
-#endif
         return;
     }
     assert(*before != 0);
@@ -108,7 +108,7 @@ assoc_flush(const uint32_t hv)
 {
     item **pos;
 
-    pos = &primary_hashtable[hv & hashmask(hashpower)];
+    pos = &(primary_hashtable[hv & hashmask(hashpower)].head);
     cos_flush_cache(pos);
     while (*pos) {
         pos = &(*pos)->h_next;
