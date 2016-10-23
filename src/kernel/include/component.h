@@ -36,7 +36,7 @@ comp_activate(struct captbl *t, capid_t cap, capid_t capin, capid_t captbl_cap, 
 	struct cap_pgtbl  *ptc;
 	struct cap_captbl *ctc;
 	u32_t v;
-	int ret = 0, pmem_cap, pmem_mem;
+	int ret = 0, pmem_ct_cap, pmem_pt_cap, pmem_mem;
 
 	ctc = (struct cap_captbl *)captbl_lkup(t, captbl_cap);
 	if (unlikely(!ctc || ctc->h.type != CAP_CAPTBL || ctc->lvl > 0)) return -EINVAL;
@@ -44,8 +44,8 @@ comp_activate(struct captbl *t, capid_t cap, capid_t capin, capid_t captbl_cap, 
 	if (unlikely(!ptc || ptc->h.type != CAP_PGTBL || ptc->lvl > 0)) return -EINVAL;
 
 	/* global component has reference to global cap_tbl and pg_tbl*/
-	pmem_cap = VA_IN_IVSHMEM_RANGE(ctc);
-	if (pmem_cap) assert(VA_IN_IVSHMEM_RANGE(ptc));
+	pmem_ct_cap = VA_IN_IVSHMEM_RANGE(ctc);
+	pmem_pt_cap = VA_IN_IVSHMEM_RANGE(ptc);
 	pmem_mem = VA_IN_IVSHMEM_RANGE(ctc->captbl);
 	if (pmem_mem) {
 		assert(PA_IN_IVSHMEM_RANGE(ptc->pgtbl));
@@ -54,7 +54,7 @@ comp_activate(struct captbl *t, capid_t cap, capid_t capin, capid_t captbl_cap, 
 
 	v = ptc->refcnt_flags;
 	if (v & CAP_MEM_FROZEN_FLAG) return -EINVAL;
-	if (pmem_cap) {
+	if (pmem_pt_cap) {
 		if (cos_non_cc_cas((unsigned long *)&ptc->refcnt_flags, v, v + 1) != CAS_SUCCESS) return -ECASFAIL;
 	} else {
 		if (cos_cas((unsigned long *)&ptc->refcnt_flags, v, v + 1) != CAS_SUCCESS) return -ECASFAIL;
@@ -62,7 +62,7 @@ comp_activate(struct captbl *t, capid_t cap, capid_t capin, capid_t captbl_cap, 
 
 	v = ctc->refcnt_flags;
 	if (v & CAP_MEM_FROZEN_FLAG) cos_throw(undo_ptc, -EINVAL);
-	if (pmem_cap) ret = cos_non_cc_cas((unsigned long *)&ctc->refcnt_flags, v, v + 1);
+	if (pmem_ct_cap) ret = cos_non_cc_cas((unsigned long *)&ctc->refcnt_flags, v, v + 1);
 	else ret = cos_cas((unsigned long *)&ctc->refcnt_flags, v, v + 1);
 	if (unlikely(ret != CAS_SUCCESS)) {
 		/* undo before return */
@@ -84,10 +84,10 @@ comp_activate(struct captbl *t, capid_t cap, capid_t capin, capid_t captbl_cap, 
 	return 0;
 
 undo_ctc:
-	if (pmem_cap) cos_non_cc_faa((int *)&ctc->refcnt_flags, -1);
+	if (pmem_ct_cap) cos_non_cc_faa((int *)&ctc->refcnt_flags, -1);
 	else cos_faa((int *)&ctc->refcnt_flags, -1);
 undo_ptc:
-	if (pmem_cap) cos_faa((int *)&ptc->refcnt_flags, -1);
+	if (pmem_pt_cap) cos_faa((int *)&ptc->refcnt_flags, -1);
 	else cos_faa((int *)&ptc->refcnt_flags, -1);
 	return ret;
 }

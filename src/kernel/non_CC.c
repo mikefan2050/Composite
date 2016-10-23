@@ -71,7 +71,7 @@ static inline int
 global_pte_flush(void)
 {
 //#define IVSHMEM_RETYPE_SZ (IVSHMEM_TOT_SIZE/(RETYPE_MEM_NPAGES*PAGE_SIZE))
-#define IVSHMEM_RETYPE_SZ max_pmem_idx
+#define IVSHMEM_RETYPE_SZ (*max_pmem_idx)
 #define KERNEL_OFF 768
 	static u32_t off=0;
 	unsigned long *pgd, pte;

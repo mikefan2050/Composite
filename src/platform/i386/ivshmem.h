@@ -12,6 +12,7 @@ struct ivshmem_meta {
 	char magic[MAGIC_LEN];
 	int kernel_done, boot_done, node_num, boot_num;
 	u64_t global_tsc;
+	u32_t max_pmem_idx;
 	struct liveness_entry *pmem_liveness_tbl;
 	struct retype_info *pmem_retype_tbl;
 	pgtbl_t pmem_pgd[NUM_NODE];

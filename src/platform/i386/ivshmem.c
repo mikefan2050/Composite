@@ -114,9 +114,10 @@ ivshmem_boot_init(struct captbl *ct)
 		if (pgtbl_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_PMEM_PT_BASE, meta_page->pmem_pgd[cur_node], 0)) assert(0);
 		if (captbl_activate(ct, BOOT_CAPTBL_SELF_CT, BOOT_CAPTBL_PMEM_CT_BASE, meta_page->pmem_ct[cur_node], 0)) assert(0);
 		__pmem_liveness_tbl = meta_page->pmem_liveness_tbl;
-		pmem_retype_tbl = meta_page->pmem_retype_tbl;
-		cc_quiescence = meta_page->pmem_cc_quiescence;
-		global_tsc = &meta_page->global_tsc;
+		pmem_retype_tbl     = meta_page->pmem_retype_tbl;
+		max_pmem_idx        = &(meta_page->max_pmem_idx);
+		cc_quiescence       = meta_page->pmem_cc_quiescence;
+		global_tsc          = &meta_page->global_tsc;
 		printk("node %d ivshmem kernel done!\n", cur_node);
 		return ;
 	}
@@ -135,6 +136,7 @@ ivshmem_boot_init(struct captbl *ct)
 		meta_page->pmem_retype_tbl->mem_set[j].refcnt_atom.ref_cnt = 0;
 		meta_page->pmem_retype_tbl->mem_set[j].last_unmap          = 0;
 	}
+	max_pmem_idx = &(meta_page->max_pmem_idx);
 	pmem_retype_tbl = meta_page->pmem_retype_tbl;
 	retypetbl_retype2user((void*)chal_va2pa((void*)ivshmem_addr));
 	for (i = (unsigned long)ivshmem_addr+PAGE_SIZE * RETYPE_MEM_NPAGES ; 

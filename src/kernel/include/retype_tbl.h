@@ -73,7 +73,7 @@ struct retype_info_glb {
 
 extern struct retype_info_glb glb_retype_tbl[N_MEM_SETS];
 extern struct retype_info     *pmem_retype_tbl;
-extern u32_t max_pmem_idx;
+extern u32_t *max_pmem_idx;
 
 #define COS_KMEM_BOUND (chal_kernel_mem_pa + PAGE_SIZE * COS_KERNEL_MEMORY)
 
