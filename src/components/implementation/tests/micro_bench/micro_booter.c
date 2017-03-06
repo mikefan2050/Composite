@@ -6,6 +6,7 @@ int cur_node;
 struct cos_compinfo booter_info;
 thdcap_t termthd; 		/* switch to this to shutdown */
 extern vaddr_t cos_upcall_entry;
+extern int cache_op_test(void);
 
 static void
 cos_llprint(char *s, int len)
@@ -111,6 +112,7 @@ cos_init(void)
 	assert(termthd);
 
 	printc("ct resevr %d free %d\n", TEST_RESERVE, TEST_FREE);
+//	cache_op_test();
 	boot_node_init();
 
 	cos_thd_switch(termthd);
