@@ -105,7 +105,7 @@ cos_cache_mandatory_flush(void)
 	int i, j, r = -1;
 	u32_t *kernel_pgtbl = (u32_t *)&boot_comp_pgd;
 
-	if (cur_pgd_idx == ivshmem_pgd_idx) {
+	if (cur_pgd_idx == ivshmem_pgd_idx && !cur_pte_idx) {
 		if (!npage_flush) non_cc_rdtscll(&clflush_start);
 		if (global_pte_flush()) return -1;
 	}
@@ -114,6 +114,7 @@ cos_cache_mandatory_flush(void)
 		cos_wb_cache(&cc_quiescence[cur_node].last_mandatory_flush);
 		r = npage_flush;
 		cur_pgd_idx = ivshmem_pgd_idx;
+		cur_pte_idx = 0;
 		global_tlb_flush();
 		npage_flush = 0;
 		asm volatile ("sfence"); /* serialize */
@@ -122,7 +123,7 @@ cos_cache_mandatory_flush(void)
 
 	page = kernel_pgtbl[cur_pgd_idx];
 	pte = chal_pa2va(page & PGTBL_FRAME_MASK);
-	for(i=0; i < (int)TOT_PTE_NUM; i++) {
+	for(i=cur_pte_idx; i < cur_pte_idx+(int)CC_PTE_NUM; i++) {
 		page = pte[i];
 		if (page & PGTBL_ACCESSED) {
 			addr = chal_pa2va(page & PGTBL_FRAME_MASK);
@@ -131,7 +132,11 @@ cos_cache_mandatory_flush(void)
 			npage_flush++;
 		}
 	}
-	cur_pgd_idx++;
+	cur_pte_idx += CC_PTE_NUM;
+	if (cur_pte_idx == TOT_PTE_NUM) {
+		cur_pte_idx = 0;
+		cur_pgd_idx++;
+	}
 
 	return -1;
 }

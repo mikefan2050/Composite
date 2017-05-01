@@ -21,7 +21,7 @@
 #define CPU_FREQ       2700000
 #define ITER           1000000
 #define CACHELINE_SIZE 64
-#define NON_CC_OP
+#define ENABLE_CC_OP
 
 struct meta_header {
 	char magic[MAGIC_LEN];
@@ -66,41 +66,81 @@ int call_cap_mb(u32_t cap_no, int arg1, int arg2, int arg3)
 	return ret;
 }
 
-/* load/store a value of other nodes */
-static inline int
-non_cc_load_int(int *target)
-{
-#ifdef NON_CC_OP
-	cos_flush_cache(target);
-#endif
-	return *target;
-}
-
 static inline void
-non_cc_store_int(int *target, int value)
+clflush_range_opt(void *s, void *e)
 {
-	*target = value;
-#ifdef NON_CC_OP
-	cos_wb_cache(target);
+#ifdef ENABLE_CC_OP
+	s = (void *)round_to_cacheline(s);
+	e = (void *)round_to_cacheline(e-1);
+	for(; s<=e; s += CACHE_LINE) cos_flush_cache(s);
 #endif
+	return ;
 }
 
 static inline void
 clflush_range(void *s, void *e)
 {
+#ifdef ENABLE_CC_OP
 	s = (void *)round_to_cacheline(s);
 	e = (void *)round_to_cacheline(e-1);
 	for(; s<=e; s += CACHE_LINE) cos_flush_cache(s);
 	asm volatile ("sfence"); /* serialize */
+#endif
+	return ;
+}
+
+static inline void
+clwb_range_opt(void *s, void *e)
+{
+#ifdef ENABLE_CC_OP
+	s = (void *)round_to_cacheline(s);
+	e = (void *)round_to_cacheline(e-1);
+	for(; s<=e; s += CACHE_LINE) cos_wb_cache(s);
+#endif
+	return ;
 }
 
 static inline void
 clwb_range(void *s, void *e)
 {
+#ifdef ENABLE_CC_OP
 	s = (void *)round_to_cacheline(s);
 	e = (void *)round_to_cacheline(e-1);
 	for(; s<=e; s += CACHE_LINE) cos_wb_cache(s);
 	asm volatile ("sfence"); /* serialize */
+#endif
+	return ;
+}
+
+/* load/store a value of other nodes */
+static inline int
+non_cc_load_int(int *target)
+{
+#ifdef NON_CC_OP
+	clflush_range(target, (char *)target + CACHE_LINE);
+#endif
+	return *(volatile int *)target;
+}
+
+static inline void
+non_cc_store_int(int *target, int value)
+{
+	*(volatile int *)target = value;
+#ifdef NON_CC_OP
+	clwb_range(target, (char *)target+CACHE_LINE);
+#endif
+}
+
+static inline int
+cc_load_int(int *target)
+{
+	return *(volatile int *)target;
+}
+
+static inline void
+cc_store_int(int *target, int value)
+{
+	*(volatile int *)target = value;
 }
 
 #endif /* MICRO_BOOTER_H */

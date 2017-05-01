@@ -140,7 +140,7 @@ CFLAGS = -g
 COMMENT = :
 endif
 # GAP: -fno-merge-constants
-CFLAGS += -Wall -W -Wchar-subscripts -Wmissing-prototypes -Wmissing-declarations -Wno-switch -Wno-unused -Wredundant-decls -fno-merge-constants -fno-stack-protector
+CFLAGS += -Wall -W -Wchar-subscripts -Wmissing-prototypes -Wmissing-declarations -Wno-switch -Wno-unused -Wredundant-decls -fno-merge-constants -fno-stack-protector -O3
 
 PWD=$(shell pwd)
 
@@ -174,8 +174,8 @@ $(OBJDIR)/cos_syscalls.o: cos_syscalls.c
 	$(COMMENT) -$(CROSS)strip -x -R .comment -R .note $@
 
 ifeq ($(shell $(CC) -v 2>&1 | grep "gcc version"),gcc version 4.0.0)
-SAFE_CFLAGS=$(shell echo $(CFLAGS)|sed 's/-Os/-O2/')
-SAFER_CFLAGS=$(shell echo $(CFLAGS)|sed 's/-Os/-O/')
+SAFE_CFLAGS=$(shell echo $(CFLAGS)|sed 's/-Os/-O3/')
+SAFER_CFLAGS=$(shell echo $(CFLAGS)|sed 's/-Os/-O3/')
 else
 SAFE_CFLAGS=$(CFLAGS)
 SAFER_CFLAGS=$(CFLAGS)

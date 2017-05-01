@@ -215,7 +215,7 @@ __captbl_cap2sz(cap_t c)
 static inline unsigned long captbl_idsize(cap_t c)
 { return 1<<__captbl_cap2sz(c); }
 
-#define NUM_NODE 4
+#define NUM_NODE 2
 /*
  * LLBooter initial captbl setup:
  * 0 = sret,
@@ -869,11 +869,11 @@ cos_mem_fence(void)
 
 #define IVSHMEM_MAGIC "IVSHMEM"
 #define MAGIC_LEN 8
-/* ivshmem layout. total ivshmem is 512M, see qemu-ivshmem.sh
+/* ivshmem layout. total ivshmem is 650M, see qemu-ivshmem.sh
  * the first page is shared meta page, mapped into every component in every node
  * the first 32M is for boot time kernel memory bump allocation, retype_tbl, liveness_tbl ...
- * the rest 480M are untyped memory, managed by user level (rpc or memcached) */
-#define IVSHMEM_TOT_SIZE     (PGD_SIZE/4*512)
+ * the rest 618M are untyped memory, managed by user level (rpc or memcached) */
+#define IVSHMEM_TOT_SIZE     (PGD_SIZE/4*650)
 #define IVSHMEM_UNTYPE_START (PGD_SIZE*8)
 #define IVSHMEM_UNTYPE_SIZE  (IVSHMEM_TOT_SIZE - IVSHMEM_UNTYPE_START)
 #define PA_IN_IVSHMEM_RANGE(pa) (ivshmem_phy_addr && ((u32_t)pa) >= ivshmem_phy_addr && ((u32_t)pa) < ivshmem_phy_addr+IVSHMEM_TOT_SIZE)

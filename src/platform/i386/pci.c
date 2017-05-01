@@ -65,6 +65,7 @@ pci_probe(void)
 			pci_write(devices[i].bus, devices[i].dev, devices[i].func, 6<<2, devices[i].bar[2].raw);
 			ivshmem_phy_addr = devices[i].bar[2].raw & 0xFFFFFFF0;
 			ivshmem_sz = (~(reg & 0xFFFFFFF0))+1;
+			if (ivshmem_sz > IVSHMEM_TOT_SIZE) ivshmem_sz = IVSHMEM_TOT_SIZE;
 		}
 	}
 }
