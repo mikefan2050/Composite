@@ -30,37 +30,6 @@ static struct list_head *primary_hashtable;
 /* Number of items in the hash table. */
 static unsigned int hash_items = 0;
 
-/* #define CACHE_FLUSH 1 */
-#ifdef CACHE_FLUSH
-inline void
-update(volatile void *p)
-{ asm volatile ("clflushopt (%0) ; lfence" :: "r"(p) : "memory"); }
-
-struct bin_lock {
-	unsigned long o;
-};
-
-static inline void
-bin_lock_take(struct bin_lock *l)
-{
-    clflush_range(&l->o, (char *)(&l->o) + CACHE_LINE);
-    while (!ps_cas(&l->o, 0, 1)) ; 
-    /* clwb_range(&l->o, (char *)(&l->o) + CACHE_LINE); */
-}
-
-static inline void
-bin_lock_release(struct bin_lock *l)
-{
-    l->o = 0;
-    clwb_range(&l->o, (char *)(&l->o) + CACHE_LINE);
-}
-
-static inline void
-bin_lock_init(struct bin_lock *l)
-{ l->o = 0; }
-struct bin_lock htlock;
-#endif
-
 void
 assoc_init(int node, const int hashtable_init)
 {
@@ -68,9 +37,6 @@ assoc_init(int node, const int hashtable_init)
     size = round_up_to_page(size)/PAGE_SIZE;
     primary_hashtable = alloc_pages(size);
     memset(primary_hashtable, 0, size*PAGE_SIZE);
-#ifdef CACHE_FLUSH
-    bin_lock_init(&htlock);
-#endif
     return ;
 }
 
@@ -79,30 +45,17 @@ assoc_find(int node, const char *key, const size_t nkey, const uint32_t hv)
 {
     item *it;
 
-#ifdef CACHE_FLUSH
-    item **pos;
-    bin_lock_take(&htlock);
-    pos = &(primary_hashtable[hv & hashmask(hashpower)].head);
-    update(pos);
-#endif
-
     it = primary_hashtable[hv & hashmask(hashpower)].head;
 
     item *ret = NULL;
     while (it) {
-#ifdef CACHE_FLUSH
-        clflush_range_opt(it, (char *)it + MC_SLAB_OBJ_SZ);
-        asm volatile ("lfence"); /* serialize */
-#endif
         if ((nkey == it->nkey) && (memcmp(key, ITEM_key(it), nkey) == 0)) {
             ret = it;
             break;
         }
         it = it->h_next;
     }
-#ifdef CACHE_FLUSH
-    bin_lock_release(&htlock);
-#endif
+
     return ret;
 }
 

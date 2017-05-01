@@ -3,15 +3,7 @@
 #include "rpc.h"
 
 #define N_KEYS 4000000
-/*#define N_KEYS 2381390*/
-/* #define N_KEYS 1190695 */
-/* #define N_KEYS 595347 */
-/* #define N_KEYS 297673 */
-/* #define N_KEYS 148836 */
-/* #define N_KEYS 74418 */
-/* #define N_KEYS 37209 */
 #define N_OPS  10000000
-/*#define N_OPS 200000*/
 
 char *ops, *load_key;;
 static char *mc_key, *mc_data, *mc_ret;
@@ -33,14 +25,6 @@ static int cmpfunc(const void * a, const void * b)
     return ( *(int*)b - *(int*)a );
 }
 
-/*static void*/
-/*out_latency(void)*/
-/*{*/
-/*	qsort(req_cost, n_tot, sizeof(int), cmpfunc);*/
-/*	printc("tot %d %d 99.9 %d 99 %d min %d max %d\n", n_tot, n_read+n_update, */
-/*		req_cost[n_tot/1000], req_cost[n_tot/100], req_cost[n_tot-1], req_cost[0]);*/
-/*}*/
-
 static inline void
 disconnect_mc_server(int cur, int server)
 {
@@ -58,7 +42,6 @@ client_get_key(char *key, int nkey)
 #else
 	int nbyte;
 	rcv = (void *)mc_get_key_ext(key, nkey, &nbyte);
-/*	assert(nbyte == V_LENGTH);*/
 #endif
 	if (!rcv) return -1;
 	assert(((char *)rcv)[0] == '$');
@@ -156,7 +139,6 @@ client_bench(int cur)
                 if (!ret) {
                         if (*op == 'R') nget++;
 			n_tot++;
-                        /* req_cost[n_tot++] = (int)cost; */
                 }
 		op += (KEY_LENGTH+2)*(NUM_NODE/2);
 	}
@@ -173,8 +155,6 @@ client_bench(int cur)
         printc("%llu (%llu) op, get %llu, set %llu miss %d (%%%%) %d\n", (unsigned long long)(e-s)/(n_read + n_update),
 	       tot_cost/(n_read+n_update), rl, ul, n_read - nget, (n_read ? (n_read - nget) * 1000 / n_read : 0));
 
-	/* printc("%llu op, flush %llu miss %d (%%%%) %d\n", (unsigned long long)(e-s)/(n_read + n_update), */
-	/*        tot_cost/(n_read + n_update), n_read - nget, (n_read ? (n_read - nget) * 1000 / n_read : 0)); */
 #ifdef MC_IPC
 	call_cap_mb(MC_PRINT_STATUS, cur_node, KEY_LENGTH, V_LENGTH);
 #else
@@ -235,7 +215,6 @@ client_start(int cur)
 #endif
 	cos_faa(&ivshmem_meta->boot_num, 1);
 	i = kernel_flush();
-	/* out_latency(); */
 	printc("flush kernel page %d\n", i);
 	while (*(volatile int *)&(ivshmem_meta->boot_num) != NUM_NODE*3/2) { ; }
 	disconnect_mc_server(cur_node, cur_node-NUM_NODE/2);

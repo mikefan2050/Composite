@@ -82,16 +82,7 @@ do_item_alloc(int node, char *key, const size_t nkey, const int flags,
 void
 item_free(int node, item *it)
 {
-    /* size_t ntotal = ITEM_ntotal(it); */
-    /* assert((it->it_flags & ITEM_LINKED) == 0); */
-    /* assert(it != heads[it->slabs_clsid]); */
-    /* assert(it != tails[it->slabs_clsid]); */
-    /* assert(it->refcount == 0); */
-
-    /* so slab size changer can tell later if item is already free or not */
     it->slabs_clsid = 0;
-    /* DEBUG_REFCNT(it, 'F'); */
-
     parsec_mem_free(node, it);
 }
 
@@ -99,11 +90,7 @@ int
 do_item_link(int node, item *it, const uint32_t hv)
 {
     assert((it->it_flags & (ITEM_LINKED|ITEM_SLABBED)) == 0);
-
     it->it_flags |= ITEM_LINKED;
-
-    /* Allocate a new CAS ID on link. */
-//    ITEM_set_cas(it, (settings.use_cas) ? get_cas_id() : 0);
     assoc_insert(node, it, hv);
 
     return 1;
@@ -112,16 +99,9 @@ do_item_link(int node, item *it, const uint32_t hv)
 void
 do_item_unlink(int node, item *it, const uint32_t hv)
 {
-//    MEMCACHED_ITEM_UNLINK(ITEM_key(it), it->nkey, it->nbytes);
     assert(it->it_flags & ITEM_LINKED);
-
     it->it_flags &= ~ITEM_LINKED;
-    /* STATS_LOCK(); */
-    /* stats.curr_bytes -= ITEM_ntotal(it); */
-    /* stats.curr_items -= 1; */
-    /* STATS_UNLOCK(); */
     assoc_delete(node, ITEM_key(it), it->nkey, hv);
-
     do_item_remove_free(node, it);
 }
 
@@ -129,7 +109,6 @@ do_item_unlink(int node, item *it, const uint32_t hv)
 void
 do_item_remove_free(int node, item *it)
 {
-//    MEMCACHED_ITEM_REMOVE(ITEM_key(it), it->nkey, it->nbytes);
     assert((it->it_flags & ITEM_SLABBED) == 0);
 
     item_free(node, it);

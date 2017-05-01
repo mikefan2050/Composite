@@ -27,7 +27,6 @@
 #else
 #define MC_HASH_FLUSH_PEROID  27000000
 #endif
-/*#define MC_HASH_FLUSH_PEROID  270000000*/
 #define MAX_MC_HASH_TIME      (1054438*2)
 /* Initial power multiplier for the hash table */
 #define HASHPOWER_DEFAULT     22

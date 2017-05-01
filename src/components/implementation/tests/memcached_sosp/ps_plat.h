@@ -47,25 +47,12 @@ static inline void *
 ps_plat_alloc(size_t sz, coreid_t coreid)
 {
 	return NULL;
-	/* void *m; */
-	/* int ret; */
-	/* (void)coreid; */
-
-	/* ret = posix_memalign(&m, PS_PAGE_SIZE, sz); */
-	/* assert(!ret); */
-	/* memset(m, 0, sz); */
-
-	/* return m; */
-	/* mmap(0, sz, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, (size_t)0); */
 }
 
 static inline void
 ps_plat_free(void *s, size_t sz, coreid_t coreid)
 {
 	return ;
-	/* (void)coreid; (void)sz; */
-	/* free(s); */
-	/* munmap(s, sz); */
 }
 
 /*
@@ -112,25 +99,12 @@ static inline ps_tsc_t
 ps_tsc_locality(coreid_t *coreid, localityid_t *numaid)
 {
 	return 0;
-	/* unsigned long a, d, c; */
-
-	/* __asm__ __volatile__("rdtscp" : "=a" (a), "=d" (d), "=c" (c) : : ); */
-	/* *coreid = c & 0xFFF; 	/\* lower 12 bits in Linux = coreid *\/ */
-	/* *numaid = c >> 12; 	/\* next 8 = socket/numa id *\/ */
-
-	/* return ((u64_t)d << 32) | (u64_t)a; */
 }
 
 static inline unsigned int
 ps_coreid(void)
 {
 	return 0;
-	/* coreid_t coreid, numaid; */
-
-	/* if (PS_NUMCORES == 1) return 0; */
-	/* ps_tsc_locality(&coreid, &numaid); */
-
-	/* return coreid; */
 }
 
 /* #define PS_ATOMIC_POSTFIX "q" /\* x86-64 *\/ */

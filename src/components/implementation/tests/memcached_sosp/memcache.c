@@ -53,7 +53,6 @@ struct mc_mem_msg {
 #define QUIS_RING 1
 #ifdef QUIS_RING
 #define QUIS_NUM 11264
-/*#define QUIS_NUM 16384*/
 #define QUIS_PAGE_NUM (QUIS_NUM*sizeof(struct ps_mheader *)/PAGE_SIZE)
 struct ps_qsc_ring {
     int head, tail;
@@ -103,7 +102,6 @@ mc_alloc_pages(struct ps_mem *m, size_t sz, coreid_t coreid)
 
     if (status[coreid].used*100 > status[coreid].target*MC_MEM_EVICT_THOLD) {
         smr = mem_smr_reclaim(coreid, &qsc_list[coreid]);
-//        printc("smr node %d used %llu qui %llu tot %llu smr slab %x ret %d\n", coreid, status[coreid].used/PAGE_SIZE, status[coreid].quiesce/PAGE_SIZE, status[coreid].target*MC_MEM_EVICT_THOLD/100/PAGE_SIZE, __ps_mem_item.percore[coreid].slab_info.el.list, n);
     }
     if (status[coreid].used*100 > status[coreid].target*MC_MEM_EVICT_THOLD) {
 #ifdef MC_NO_MEM_BALANCE
@@ -113,7 +111,6 @@ mc_alloc_pages(struct ps_mem *m, size_t sz, coreid_t coreid)
         }
 #endif
         evt = mc_mem_evict(coreid, 1);
-//        printc("evict node %d used %llu qui %llu tot %llu evict %d slab %x ret %d\n", coreid, status[coreid].used/PAGE_SIZE, status[coreid].quiesce/PAGE_SIZE, status[coreid].target*MC_MEM_EVICT_THOLD/100/PAGE_SIZE, n, __ps_mem_item.percore[coreid].slab_info.el.list, off);
     }
 
     n = sz/PAGE_SIZE;
@@ -177,7 +174,6 @@ qsc_ring_enqueue(struct ps_qsc_ring *ql, struct ps_mheader *m)
     if (ql->head == (ql->tail + 1) % QUIS_NUM) {
         int r=mem_smr_reclaim(ql - qsc_list, ql);
         if (ql->head == (ql->tail + 1) % QUIS_NUM) {
-            /* mc_print_status(); */
             printc("quisence ring full %d reclaim %d node %d\n", QUIS_NUM, r, (int)(ql - qsc_list));
             assert(0);
         }

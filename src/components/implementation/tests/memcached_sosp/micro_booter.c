@@ -170,22 +170,16 @@ boot_node_init(void)
 	}
 
 	ic = cos_sinv_alloc(&booter_info, rpc_comp, (vaddr_t)SERVER_FN(rpc_create));
-//	for(i=NUM_NODE/2; i<NUM_NODE; i++) cos_cap_cpy_captbl_at(client_ct[i], RPC_CREATE, BOOT_CAPTBL_SELF_CT, ic);
 	cos_cap_cpy_captbl_at(mc_ct, RPC_CREATE, BOOT_CAPTBL_SELF_CT, ic);
 	ic = cos_sinv_alloc(&booter_info, rpc_comp, (vaddr_t)SERVER_FN(rpc_connect));
-//	for(i=NUM_NODE/2; i<NUM_NODE; i++) cos_cap_cpy_captbl_at(client_ct[i], RPC_CONNECT, BOOT_CAPTBL_SELF_CT, ic);
 	cos_cap_cpy_captbl_at(mc_ct, RPC_CONNECT, BOOT_CAPTBL_SELF_CT, ic);
 	ic = cos_sinv_alloc(&booter_info, rpc_comp, (vaddr_t)SERVER_FN(rpc_send));
-//	for(i=NUM_NODE/2; i<NUM_NODE; i++) cos_cap_cpy_captbl_at(client_ct[i], RPC_SEND, BOOT_CAPTBL_SELF_CT, ic);
 	cos_cap_cpy_captbl_at(mc_ct, RPC_SEND, BOOT_CAPTBL_SELF_CT, ic);
 	ic = cos_sinv_alloc(&booter_info, rpc_comp, (vaddr_t)SERVER_FN(rpc_recv));
-//	for(i=NUM_NODE/2; i<NUM_NODE; i++) cos_cap_cpy_captbl_at(client_ct[i], RPC_RECV, BOOT_CAPTBL_SELF_CT, ic);
 	cos_cap_cpy_captbl_at(mc_ct, RPC_RECV, BOOT_CAPTBL_SELF_CT, ic);
 	ic = cos_sinv_alloc(&booter_info, rpc_comp, (vaddr_t)SERVER_FN(rpc_free));
-//	for(i=NUM_NODE/2; i<NUM_NODE; i++) cos_cap_cpy_captbl_at(client_ct[i], RPC_FREE, BOOT_CAPTBL_SELF_CT, ic);
 	cos_cap_cpy_captbl_at(mc_ct, RPC_FREE, BOOT_CAPTBL_SELF_CT, ic);
 	ic = cos_sinv_alloc(&booter_info, rpc_comp, (vaddr_t)SERVER_FN(rpc_register));
-//	for(i=NUM_NODE/2; i<NUM_NODE; i++) cos_cap_cpy_captbl_at(client_ct[i], RPC_REGISTER, BOOT_CAPTBL_SELF_CT, ic);
 	cos_cap_cpy_captbl_at(mc_ct, RPC_REGISTER, BOOT_CAPTBL_SELF_CT, ic);
 
 	ic = cos_sinv_alloc(&booter_info, mc_comp, (vaddr_t)SERVER_FN(mc_register));
